@@ -1,0 +1,3508 @@
+\input texinfo @c -*-texinfo-*-
+@c %**start of header
+@setfilename smap.info
+@settitle Smap Manual
+@c %**end of header
+@setchapternewpage odd
+
+@defcodeindex pr
+@defcodeindex op
+@defcodeindex kw
+@defcodeindex fl
+
+@syncodeindex fn cp
+@syncodeindex vr cp
+@syncodeindex ky cp
+@syncodeindex pg cp
+@syncodeindex tp cp
+@syncodeindex op cp
+@syncodeindex pr cp
+@syncodeindex kw cp
+@syncodeindex fl cp
+
+@include version.texi
+@include macros.texi
+
+@ifinfo
+@dircategory Email
+@direntry
+* Smap::                    Socket map framework.
+* smapd: (smap) smapd.      Socket map server.
+* smapc: (smap) smapc.      Socket map client.
+@end direntry
+@end ifinfo
+
+@copying
+Copyright @copyright{} 2009-2010, 2014 Sergey Poznyakoff
+
+Permission is granted to copy, distribute and/or modify this document
+under the terms of the GNU Free Documentation License, Version 1.3 or
+any later version published by the Free Software Foundation; with no
+Invariant Sections, with the Front-Cover texts being ``Smap Manual''
+and with the Back-Cover Texts as in (a) below.  A copy of the license
+is included in the section entitled ``GNU Free Documentation License''. 
+
+(a) The Back-Cover Text is: ``You have freedom to copy and modify
+this manual, like GNU software.''
+@end copying
+
+@titlepage
+@title Smap -- socket map utilities
+@subtitle version @value{VERSION}, @value{UPDATED}
+@author Sergey Poznyakoff
+@page
+@vskip 0pt plus 1filll
+@insertcopying
+@end titlepage
+
+@ifnothtml
+@page
+@summarycontents
+@page
+@end ifnothtml
+@contents
+
+@ifnottex
+@node Top
+@top Smap -- socket map utilities
+
+This edition of the @cite{Smap Manual}, last updated @value{UPDATED},
+documents Smap @value{VERSION}.
+
+@end ifnottex
+
+@menu
+* Intro::                Introduction
+* Overview::             Overview of the Smap Architecture
+* smapd::                Socket Map Server
+* smapd-options::        Summary of Smapd Command Line Options
+* smapd-config::         Summary of Smapd Configuration Statements
+* modules::              Modules Shipped with Smap
+* smapc::                Socket Map Client
+* Reporting Bugs::       How to Report a Bug
+
+Appendices
+
+* MeTA1::                Example: Using @command{smapd} with MeTA1
+* Protocol::             The Sockmap Protocol
+* Debug Categories::     Debug Categories
+* Copying This Manual::  The GNU Free Documentation License
+* Concept Index::        Index of Concepts
+
+@detailmenu
+ --- The Detailed Node Listing ---
+
+The Socket Map Server
+
+* operation modes::  Smapd Operation Modes.
+* logging::
+* debugging::        Tracing and Debugging.
+* privileges::       Runtime Privileges.
+* servers::          Server Configuration.
+* TCP wrappers::     How Network Access is Controlled.
+* loadable modules:: Loadable Modules.
+* databases::        Databases.
+* dispatch rules::   Query Dispatch Rules.
+* transformations::  Rules May Transform Input Queries.
+* exit codes::       Smapd Exit Codes.
+
+Modules Shipped with Smap
+
+* echo::
+* mailutils::
+* guile::
+* mysql::
+* postgres::
+* ldap::
+* sed::
+
+Mailutils
+
+* expansion::       Variable Expansion
+* load-mailutils::  Loading Sequence
+* db-mailutils::    Mailutils Databases
+* auth::            Mailutils Auth Mode
+* mbq::             Mailutils MBQ Mode
+
+Guile
+
+* Virtual Functions::
+* Guile Output Ports::
+* Guile Initialization::
+* Guile API::
+@c * Guile Example Module::
+
+Sed
+
+* sed module::
+* sed database::
+* s-expressions::
+* sed lookups::
+
+Socket map client
+
+* Single Query Mode::
+* Interactive Mode::
+* Initialization File::
+* Smap Invocation::
+
+Interactive Mode
+
+* Command Summary::
+
+Example: Using @command{smapd} with MeTA1
+
+* userdb-meta1::  Configure local_user_map.
+* aliases-meta1:: Configure aliases.
+* smapd-meta1::   Smapd configuration.
+* conf-meta1::    Configure MeTA1.
+
+The Sockmap Protocol
+
+* Sendmail Status Codes::
+* MeTA1 Status Codes::
+* Mailfromd Status Codes::
+
+@end detailmenu
+@end menu
+
+@node Intro
+@chapter Introduction
+@cindex MTA
+@cindex Map (MTA abstraction layer)
+  When a Mail Transfer Agent (@acronym{MTA}) receives a message, it
+undertakes a sequence of steps to decide the fate of that particular
+message: whether to deliver it locally, to relay it to some other
+site, to reject or bounce it, or to take some other action. When
+taking its decision, @acronym{MTA} examines a set of data sources
+which hold such data as lists of local and relayed domains, tables
+of system accounts, etc. These data sources may be of various nature.
+For example, domain tables can be stored on disk as plaintext files or
+as DBM files; they can also be retrieved from @acronym{LDAP} or from
+some database management system. To provide a uniform access to such
+a variety of data sources, @acronym{MTA} usually implement some
+intermediate layer. Sendmail@footnote{See
+@uref{http://www.sendmail.org}.} and MeTA1@footnote{See
+@uref{http://www.meta1.org}.} call this layer a @dfn{map}.
+
+@cindex socket map
+@cindex sockmap
+  Among various types of maps implemented by these @acronym{MTA}s,
+there is one which merits special attention. It is @dfn{socket
+map}, also called @dfn{sockmap}, for short. This map is not associated
+with any particular data storage. When the @acronym{MTA} looks up for
+a key in a sockmap, the latter sends the request over TCP/IP to a
+preconfigured address, waits for a reply from there and hands it back
+to the @acronym{MTA}. It is supposed, of course, that some server is
+listening on this address.
+
+  Sockmaps provide an incredibly effective way of extending the
+functionality of @acronym{MTA}s. For example, one may use them to
+configure one's Sendmail to keep all data in an @acronym{SQL}
+database or in any other database, not directly supported by the
+@acronym{MTA}.
+
+  So far sockmaps have been given undeservedly little
+attention. Perhaps, this is due to lack of suitable free
+software servers that could be queried using them.
+
+@cindex smap, description of
+  Smap aims to fill this gap. Its main component is @command{smapd} --
+a modular server which handles sockmap requests. Instead of handling
+each request itself, @command{smapd} relies on @dfn{loadable modules}
+to provide the requested functionality. In other words,
+@command{smapd} is responsible for handling socket map protocol,
+and for dispatching queries to appropriate modules. The module
+itself is responsible for looking up the requested key and returning
+the result.
+
+  Second important part of the package is a set of loadable modules
+for @command{smapd}.  These modules cover several important database
+management systems and make it possible to easily configure servers
+for retrieving data from them.
+
+  Furthermore, the package provides a framework for writing new
+modules for @command{smapd}. New modules may be written either in C or
+in Guile.
+
+  And finally, Smap contains a client program, @command{smapc}, which
+may be used to query arbitrary socket servers from the command
+line. Among other possible uses, @command{smapc} is a valuable tool
+for testing your socket servers.  
+
+  The main audience of Smap are administrators of Sendmail or MeTA1 mail
+transport agents, as well as those who use
+Mailfromd@footnote{See @uref{mailfromd.software.gnu.org.ua}.}, a
+flexible general-purpose mail filter.
+
+@node Overview
+@chapter Overview of the Smap Architecture
+@cindex smap architecture
+  The Smap server consists of the following conceptual parts:
+@command{smapd} daemon, map modules and databases.
+
+@table @dfn
+@cindex @command{smapd}
+@item @command{smapd} daemon
+The @command{smapd} daemon is the principal part of the system.  It
+is responsible for handling incoming connections and dispatching socket
+map requests to appropriate modules.
+
+@cindex module, defined
+@item Map modules
+These are external loadable libraries which contain backend-specific
+lookup drivers. For example, one module may provide a driver for
+lookups in plaintext files, another one may handle DBM lookups and yet
+another -- searches in MySQL databases.  Notice, that modules provide
+abstract drivers, in the sense that they are not bound for look ups
+in particular disk files or databases.  This specific information
+is supplied by Smap @dfn{databases}.
+
+@cindex database, defined
+@item Databases
+A @dfn{database} is an intermediate logical entity associated with a
+particular module.  The database provides actual configuration for the
+module.  Several different databases may be associated with the same
+module, thereby creating several instances of the same lookup driver.
+
+If the underlying module allows for such use, a database may also be
+used to modify input map name and/or key value, before passing them on
+to another database.
+@end table
+
+  The relationships between these parts are shown in the figure below:
+
+@float Figure, smap-flow
+@caption{Smap Control Flow}
+@center @image{smapflow,,,[ Smap Control Flow ],} 
+@end float
+
+  Here, the @command{smapd} daemon is configured with six databases
+(shown as @dfn{Db a} through @dfn{Db f}), interfacing to three
+different modules (boxes @dfn{Mod A} through @dfn{Mod C}).  The
+databases @samp{a} and @samp{b} interface to module @samp{A},
+databases @samp{c}, @samp{d} and @samp{e} interface to module @samp{B},
+and database @samp{f} interfaces to module @samp{B}.  All three
+modules are linked with the @file{libsmap} library.
+
+@ifinfo
+@set REQSTYLE double-dashed
+@set REPLSTYLE double-dotted
+@end ifinfo
+@ifnotinfo
+@set REQSTYLE dashed
+@set REPLSTYLE dot-dashed
+@end ifnotinfo
+  The box labeled @samp{CLIENT} represents a client program.  When
+@command{smapd} receives a request from client (its path is shown
+as a @value{REQSTYLE} line), it uses a set of @dfn{dispatch rules} (see
+the @samp{DISP} box on the figure above) to dispatch it to the appropriate
+database.  This database (@samp{Db b}, on the figure) is used to
+pass the request to the underlying module (@samp{Mod A}).  The module,
+after performing a look-up, sends the response back to the client (the
+@value{REPLSTYLE} line on the figure), using interface functions
+from @file{libsmap}.  The latter is responsible for formatting the
+answer in accordance with the socket map protocol.
+
+@cindex default reply
+@cindex reply, default
+  If the request matches no database, the server sends a default
+@samp{NOTFOUND} reply back to the client.
+
+@cindex dispatch rule, overview
+  Dispatch rules mentioned above are supplied by the user in the
+@command{smapd} configuration file.  They resemble access control
+lists: each rule consists of a @dfn{condition} and @dfn{destination}.
+The condition may use various data from the connection and request
+itself, such as client IP address or map name from the request, and
+compare them with some static data. If the condition yields true, the
+destination part of the rule points to the database which will handle
+this request.
+
+@node smapd
+@chapter The Socket Map Server
+@prindex smapd
+  Socket map server @command{smapd} is the main part of the package.
+When invoked, it reads the @dfn{configuration file} and parses its
+command line to determine its configuration settings.  Command line
+settings override ones from the configuration file.  The default
+configuration file is @file{/etc/smapd.conf}@footnote{To be precise,
+it is @file{@var{sysconfdir}/smapd.conf}, where @var{sysconfdir} is
+the name of @dfn{system configuration directory}, determined when
+configuring the package. The two most frequently used values for it
+are @file{/etc} and @file{/usr/local/etc}.}  After that,
+@command{smapd} loads the requested modules and starts operation.
+
+  In this chapter we will describe the server operation in detail.
+The discussion below will often refer to @dfn{command line options}
+and @dfn{configuration statements}, so we'll first describe shortly
+what are those.  The formal description will be given later.
+
+  Command line options have two forms.  In @dfn{traditional}, or
+@dfn{short} form, an option is a letter prefixed by a dash (e.g.
+@option{-f}).  In @dfn{long} form, an option consists of two dashes and
+option name (e.g. @option{--foreground}).  Both option forms allow for
+an argument.  For more information on option syntax, see @ref{smapd-options}.
+
+  Configuration file uses the traditional UNIX syntax.  Each statement
+occupies a single line.  Very long lines may be split into several
+physical lines by ending each one with a backslash character.
+Comments are introduced with the @samp{#} character: the character
+itself and everything after it up to next newline is ignored.  For a
+detailed description, see @ref{smapd-config}.
+
+@cindex smapd, alternative configuration file for
+  You can instruct @command{smapd} to read an alternative
+configuration file instead of the default one.  It may be necessary,
+for example, to test a new configuration.  To do so, use the
+@option{--config=@var{file}} (@option{-c @var{file}}) command line
+option.  Its argument specifies the file name to read, e.g.:
+
+@example
+$ smapd -c ./mysmapd.conf
+@end example
+
+@cindex smapd, configuration checking
+  To check whether your configuration is error-free, use the
+@option{--lint} (@option{-t}) option.  It instructs @command{smapd} to
+parse the configuration file and exit after that.  Any errors found
+are reported on the standard error.  The exit code is @samp{0} if the file
+parsed without errors and @samp{78} otherwise (@pxref{exit codes}, for
+a full list of exit codes).  For example:
+
+@example
+$ smapd -t
+@end example
+
+  Of course, the two options may be used together:
+
+@example
+$ smapd -t -c ./mysmapd.conf
+@end example
+
+@noindent
+or, in long form:
+
+@example
+$ smapd --lint --config ./mysmapd.conf
+@end example
+
+@menu
+* operation modes::  Smapd Operation Modes.
+* logging::
+* debugging::        Tracing and Debugging.
+* privileges::       Runtime Privileges.
+* servers::          Server Configuration.
+* TCP wrappers::     How Network Access is Controlled.
+* loadable modules:: Loadable Modules.
+* databases::        Databases.
+* dispatch rules::   Query Dispatch Rules.
+* transformations::  Rules May Transform Input Queries.
+* exit codes::       Smapd Exit Codes.
+@end menu
+
+@node operation modes
+@section Smapd Operation Modes
+@cindex operation modes
+@cindex modes, operation
+@cindex standalone mode
+@cindex mode, standalone
+  There are two modes of operation.  In @dfn{standalone} mode,
+@command{smapd} detaches itself from the terminal and listens on
+incoming requests in background.  In other words, it becomes a
+@dfn{daemon}.  When a connection arrives, the server spawns a copy
+of itself (called @dfn{child process}) to handle it.  Thus, a number
+of incoming connections are handled in parallel.  This is the default
+mode.
+
+@cindex inetd mode
+@cindex mode, inetd
+@anchor{inetd-mode}
+  In @dfn{inetd} mode, @command{smapd} does not listen on network
+addresses nor becomes a daemon.  Instead, it reads requests from its
+standard input and sends replies on its standard output.  As its name
+implies, this mode is intended for use from the @file{inetd.conf}
+file.
+
+  The inetd mode is requested from command line using the
+@option{--inetd} (@option{-i}) option, or from configuration file,
+using @samp{inet-mode yes} statement.
+
+@node logging
+@section Logging
+@cindex logging
+@cindex diagnostics
+@cindex syslog
+  The server determines automatically where its diagnostics output
+should go.  By default, it goes to standard error.  However, after
+detaching from the terminal in standalone mode, @command{smapd}
+sends diagnostics to syslog, using facility @samp{daemon} by default.
+The same applies also if its standard input is not attached to a
+terminal.
+
+  Two command line options are provided to manually alter these
+defaults.  The @option{--stderr} (@option{-e}) option instructs
+@command{smapd} to always send its diagnostics to the standard error,
+In contrast, the @option{--syslog} (@option{-l}) option forces it
+to use syslog.
+
+  The log facility can be changed in configuration file, using the
+@samp{log-facility} statement (@pxref{conf-log-facility,
+log-facility}), or in the command line, using the
+@option{--log-facility} (@option{-F}) option.  In both cases, the
+argument is the facility number or symbolic name.  Valid names are:
+@samp{user}, @samp{daemon}, @samp{auth}, @samp{authpriv}, @samp{mail},
+@samp{cron}, and @samp{local0} through @samp{local7}. 
+
+  Similarly, the log tag can also be changed, either from the
+configuration file, using the @samp{log-tag} statement, or from the
+command line, using the @option{--log-tag} (@option{-L}) option,
+
+@node debugging
+@section Tracing and Debugging
+@cindex debugging
+@cindex query traces
+@cindex tracing queries
+  The amount of information logged by the server is configurable.
+By default, it is quite silent and outputs only diagnostics
+that call to special attention, such as errors and the like.  You may
+request more information, however.  For further discussion, it is
+convenient to introduce two main information groups: query traces and
+debugging information.  @dfn{Query traces} are log messages that show
+received queries and corresponding replies.  They look like:
+
+@example
+user bar => NOTFOUND
+access connect:111.67.206.187 => OK REJECT
+@end example
+
+The part to the left of the @samp{=>} sign shows the query exactly as
+received from the client, i.e. the first word is the map name, and the
+rest of words constitute the key.  The part to the right of @samp{=>}
+is the reply to this query.
+
+  To enable query traces, use the @option{--trace} (@option{-T})
+command line option or @samp{trace yes} statement in the configuration
+file.
+
+  When using syslog, query traces are reported using the @samp{info}
+priority. 
+
+@anchor{trace-pattern}
+@cindex trace patterns
+@cindex patterns in query traces
+  Some requests may be of particular interest to you, whereas others
+may not be relevant at all.  There is a way to abridge the traces to
+show those relevant requests only.  If you give the
+@option{--trace-pattern=@var{pattern}} option, only those requests
+that begin with @var{pattern}@footnote{Actually, the argument would
+better be named @var{prefix}, but I plan to implement globbing
+patterns (or maybe even regular expressions) in future versions, so I
+refer to it as @var{pattern} in anticipation.} will be shown.  For
+example, to show only positive responses, use
+
+@example
+--trace --trace-pattern=OK
+@end example
+
+  The same can be requested in the configuration file as well:
+
+@example
+trace yes
+trace-pattern OK
+@end example
+
+  Any number of @option{--trace-pattern} options (or configuration
+statements) may be given.  The server will log only those queries that
+match one of the patterns specified by them.
+
+@cindex debugging information
+  @dfn{Debugging information} is auxiliary diagnostics reflecting
+various details of internal functionality of @command{smapd}.
+Although aimed primarily to help in debugging the server, it may
+occasionally be of use for server administrators as well.
+
+@cindex debugging specification
+@cindex specification, debugging
+@cindex debug level
+@cindex level, debugging
+@cindex debug category
+@cindex category, debugging
+  Debugging information is requested using the @option{--debug}
+(@option{-d}) command line option or @samp{debug} configuration
+statement.  In both cases, the argument is a @dfn{debug
+specification}, consisting of two parts, separated by a dot:
+@samp{@var{cat}.@var{lev}}.  The @var{cat} part is a @dfn{debug
+category}.  It is either an integer number identifying the category,
+or its symbolic names.  For a list of categories and their meaning,
+see @ref{Debug Categories}.
+
+  The @var{lev} part is the category @dfn{level}, an integer specifying
+how much verbosity is requested from that category.  The @samp{0}
+value means no verbosity (i.e. to disable that category), the value of
+@samp{100} means maximum verbosity.  The convention is that levels
+below @samp{10} may be of occasional use for sysadmins, whereas higher
+values are useful only for debugging.
+
+  To enable several debug categories, use several @option{--debug}
+option (or @samp{debug} configuration statements).  
+
+@node privileges
+@section Runtime Privileges
+@cindex runtime privileges
+@cindex privileges, runtime
+@cindex setuid
+  By default @command{smapd} runs with the privileges of the user that
+started it.  Normally, this user is root.  If you wish it to switch to
+some unprivileged user after startup, use the @code{user}
+configuration statement:
+
+@example
+user daemon
+@end example
+
+The above example instructs @command{smapd} to switch to the UID of
+the user @samp{daemon} and to the GID of its principal group.  The
+rest of groups the user might be a member of is dropped.  To retain
+all supplementary user groups, use the @code{allgroup} statement.  Its
+argument is a @dfn{boolean value}, i.e. @samp{yes}, @samp{on},
+@samp{true}, or @samp{t} to indicate the @dfn{true value},
+and @samp{no}, @samp{off}, @samp{false} or @samp{nil} to indicate
+@dfn{false}.   So, to switch to the user @samp{daemon} and also retain
+all its supplementary groups, one would write:
+
+@example
+user daemon
+allgroups yes
+@end example
+
+  You may also retain only some of the user's group, or even some
+groups the user is not member of.  This is done using the @code{group}
+statement:
+
+@example
+user daemon
+group mail mysql
+@end example
+
+  Arguments to @code{group} are any number of valid group names.
+
+  Notice, that while running @command{smapd} with non-root privileges
+might be a good idea, it may render some modules useless.  For
+example, the @file{mailutils} module in @samp{mbq} mode (@pxref{mbq})
+requires root privileges for normal operation.  To allow for
+such uses, instead of setting global user privileges, set them
+on a per-server basis.  @xref{servers}, for a detailed discussion of
+this technique.
+
+@node servers
+@section Server Configuration
+@cindex server configuration
+  @dfn{Servers} are internal @command{smapd} objects, responsible for
+listening on sockets and handling socket I/O operations.  Each server
+has a @dfn{server id}, which is a unique name associated with it, and
+@dfn{socket address}, which describes the socket this server handles.
+
+@anchor{smap url}
+@cindex URL
+  Socket addresses are represented as @dfn{URL}s.  Smap version
+@value{VERSION} recognizes the following URL forms:
+
+@table @asis
+@item inet://@var{ip}:@var{port}
+  Listen on the IPv4 address @var{ip}, on the given @var{port}.  IP
+address may be given either in ``dotted-quad'' notation or as a hostname.
+Port may be specified either as a port number, or as a name of a
+service from @file{/etc/services}.
+
+@item unix://@var{pathname}
+  Listen on the UNIX socket @var{pathname}.  Notice that the name of the
+socket must be absolute, so you would usually have three slashes running
+together, e.g. the notation
+
+@example
+unix:///var/run/smap.sock
+@end example
+
+@noindent
+means UNIX socket @file{/var/run/smap.sock}.
+@end table
+
+@kwindex server
+  The @code{server} statement configures servers.  It takes two
+mandatory arguments: the socked ID and URL, e.g.:
+
+@example
+server main inet://10.10.1.11:3056
+server local unix:///var/run/smap.sock
+@end example
+
+  These statements configure two servers.  The one called @samp{main}
+is listening on IP 10.10.1.11, port 3056.  The one called @samp{local}
+listens on UNIX socket @file{/var/run/smap.sock}.
+
+@cindex TCP wrappers
+  If a server is assigned an @samp{inet} address, access to it will be
+controlled by TCP wrappers.  The server ID is used as @dfn{daemon
+name}.  See the next section (@pxref{TCP wrappers}) for a detailed
+description.
+
+  The @code{server} statement has also another form, called @dfn{block
+form}, which allows to configure more details.  In this form, the
+statement is given third argument -- the word @samp{begin}.  This
+statement is followed by one or more statements supplying additional
+configuration for this server, followed by the word @samp{end} on a
+line by itself, which closes the construct.  This is illustrated in
+the following example:
+
+@example
+server local unix:///var/run/smap.sock begin
+  backlog 10
+  user mail
+end  
+@end example
+
+  Statements which may be used between @samp{begin} and @samp{end}
+fall into two categories: privilege control statements, and socket
+configuration statements.
+
+  The former are @code{user}, @code{allgroups} and @code{group},
+described in the previous section (@pxref{privileges}).  Syntactically
+they are exactly the same as their public scope counterparts.  The only
+difference is that they apply only to child processes spawned to
+handle connections to that particular URL.  For example, consider the
+following statement:
+
+@example
+server local unix:///var/run/smap.sock begin
+  user daemon
+  group mail mysql
+end  
+@end example
+
+  This configuration works as follows.  The master @command{smapd}
+process runs with root privileges.  When a connection is requested to
+socket @file{/var/run/smap.sock}, the master spawns a subprocess
+to handle that connection.  This subprocess switches to the UID and
+GID of user @samp{daemon} and retains GIDs of the groups @samp{mail}
+and @samp{mysql} and then enters the mail read-and-reply loop.  The
+ownership of the socket @file{/var/run/smap.sock} is set to UID of
+user @samp{daemon} and GID of its primary group (see also the description
+of @code{owner}, below).
+
+  Of course, the per-server privilege control statements work only if 
+the master daemon runs with the root privileges.
+
+  The second group of server statements are socket configuration
+statements.  Similarly to privilege control statements, these too
+may appear inside a server block statement as well as outside of it,
+in the global scope (with the exception of the @code{owner} statement,
+which is allowed only in @code{server} scope).  When used in global
+scope, they affect all @code{server} statements.  When used in
+per-server context, they apply to that particular server only.  These
+statements are:
+
+@deffn {Config} backlog number
+  Sets the maximum size of pending connections queue for sockets.  If a
+connection request arrives when the queue is full, the client receives an
+error with an indication of @samp{ECONNREFUSED}.
+
+Default backlog is 8. 
+@end deffn
+
+@deffn {Config} reuseaddr bool
+  If @var{bool} is @samp{yes} reuse existing socket addresses (both
+INET and UNIX).  This is the default.
+@end deffn
+
+@deffn {Config} max-children number
+  Maximum number of children processes allowed to run simultaneously.
+When the actual number of children reaches @var{number}, the server
+stops refusing further connections until any of them terminates.  The
+value of @samp{0} means @samp{unlimited}.
+
+The default limit is @samp{128}.
+@end deffn
+
+@deffn {Config} single-process bool
+  Operate in single-process mode.  This options may become necessary
+only when debugging the @command{smapd} daemon.  @emph{Never use it in
+production environment!}
+@end deffn
+
+@deffn {Config} socket-mode mode
+  Set file mode for UNIX socket.  Specify the @var{mode} argument
+either int octal notation (e.g. @samp{600}), or in
+@command{chmod}-style notation (e.g. @samp{rw-------}).
+@end deffn
+
+@deffn {Config} socket-owner user:group
+  Set socket ownership to the given user and group.  This applies only
+to UNIX sockets.  User and group may be specified either by their
+symbolic names or numeric IDs.  Either @var{user} or @var{group} may
+be omitted.  There are following cases:
+
+@table @asis
+@item owner @var{user}:@var{group}
+  Set both owner UID and GID.
+
+@item owner @var{user}
+  Set UID of the user @var{user} and GID of his primary group.
+
+@item owner @var{user}:
+  Set UID of the user @var{user}, but do not change the GID.
+
+@item owner :@var{group}
+  Set only owner GID, do not change the UID.
+@end table
+
+  Note, that this statement cannot be used outside of @code{server} scope.
+@end deffn
+
+@node TCP wrappers
+@section TCP Wrappers
+@cindex TCP Wrappers
+  Access to servers having addresses in @samp{INET} family is
+controlled using @dfn{TCP wrappers}@footnote{This feature requires
+@command{smapd} to be compiled with the TCP wrappers library
+@command{libwrap}.  It is always enabled at configure time, unless
+@command{libwrap} is absent, or you explicitly disable it.}.
+
+@findex /etc/hosts.allow
+@findex /etc/hosts.deny
+@cindex daemon name, TCP wrappers
+  This system is based on two files, called @dfn{tables}, containing
+access rules. There are two tables: the @dfn{allow table}, stored in
+file @file{/etc/hosts.allow}, and the @dfn{deny table}, kept in file
+@file{/etc/hosts.deny}.  The rules in each table begin with an
+identifier called @dfn{daemon name}.  Access to a Smap server is
+controlled by two entries: a @dfn{global one}, with the daemon name
+@samp{smapd}, and per-server one, with server ID (@pxref{servers,
+server id} as its daemon name.  The latter takes precedence over the
+former.  For example, if you have the following in your
+@file{smapd.conf}:
+
+@example
+server main inet://192.168.10.1
+@end example
+
+@noindent
+and wish this server to be accessible only to machines 192.168.10.2
+and 192.168.10.3, then you would add the following line
+to your @file{/etc/hosts.allow}:
+
+@example
+main: 192.168.10.2 192.168.10.3
+@end example
+
+@noindent
+and the following line to your @file{/etc/hosts.deny}:
+
+@example
+main: ALL
+@end example
+
+The former allows access from these two IPs, and the latter blocks it
+from any other IPs.
+
+A detailed description of TCP wrapper table format lies outside the
+scope of this document.  Please, see @ref{ACCESS CONTROL FILES,,ACCESS
+CONTROL FILES, hosts_access(5), hosts_access(5) man page}, for details.
+
+@node loadable modules
+@section Loadable Modules
+@cindex modules
+  @dfn{Mapper modules} are external pieces of software designed to
+handle a particular subset of map queries.  They are built as 
+shared libraries and loaded into @command{smapd} at startup.
+
+  Modules are loaded using the @code{module} command:
+
+@deffn {Config} module module-id module-name [args]
+Load module @file{module-name}.  Additional arguments (@var{args}), if
+specified, are passed to the module initialization function.
+
+The @var{module-id} is a unique identifier, which will subsequently be
+used to refer to that module.
+@end deffn
+
+@cindex load path
+@cindex module load path
+  A @dfn{module load path} is an internal list of directories which
+@command{smapd} scans in order to find a loadable file name specified in
+@code{module} statement.  By default the scan order is as follows:
+
+@enumerate 1
+@item Additional search directories specified by
+@code{prepend-load-path} (see below);
+@item Smap module directory: @file{$prefix/lib/smap};
+@item Additional search directories specified by @code{append-load-path}
+(see below);
+@item Directories specified in the environment variable
+@env{LTDL_LIBRARY_PATH}.
+@item The system dependent library search path (e.g. on GNU/Linux it is
+set by the file @file{/etc/ld.so.conf} and the environment variable
+@env{LD_LIBRARY_PATH}).
+@end enumerate
+
+@vrindex LTDL_LIBRARY_PATH
+@vrindex LD_LIBRARY_PATH
+  Values of @env{LTDL_LIBRARY_PATH} and @env{LD_LIBRARY_PATH} must be
+colon-separated lists of absolute directory names, for example:
+@samp{/usr/lib/mypkg:/lib/foo'}.
+
+  In any of these directories, @command{smapd} first attempts to find and
+the given @var{module-name} verbatim and to load it.  If this fails,
+it tries to append the following suffixes to it:
+
+@enumerate 1
+@item the libtool archive suffix @samp{.la}
+
+@item the suffix used for native dynamic libraries on the host
+platform, e.g.: @samp{.so}, @samp{.sl}, etc.
+@end enumerate
+
+  Additional search directories may be configured with
+@code{prepend-load-path} and @code{append-load-path} statements:
+
+@deffn {Config} prepend-load-path path
+Prepends the directories listed in its argument to the module load path.
+The @var{path} argument must be a colon-separated list of absolute
+directory names.
+@end deffn
+
+@deffn {Config} append-load-path path
+@deffnx {Config} load-path path
+Appends the directories listed in its argument to the module load path.
+The @var{path} argument must be a colon-separated list of absolute
+directory names.
+@end deffn
+
+@node databases
+@section Databases
+@cindex database, smap
+  A @dfn{database} is a logical entity associated with a particular
+module, that provides a specific configuration for it.  In other
+words, database is a configured instance of the module.
+
+  Databases are declared using the following statement:
+
+@deffn {Config} database dbname modname [args]
+Declare database @var{dbname} as an instance of module @var{modname}.
+This module should have been declared previously using the
+@code{module} statement (@pxref{loadable modules, modname}).
+Optional @var{args} provide configuration information for the module
+initialization function.  They are module-specific.
+@end deffn
+
+To illustrate this, let's consider the @samp{echo} module, which replies to
+any request with a constant string supplied to it as arguments
+(@pxref{echo,echo module}).  The following example configures two instances
+of this module:
+
+@example
+database nomap echo NOTFOUND No such map
+database tempfail echo TEMP Try again later
+@end example
+
+  The @samp{nomap} database always sends the string @samp{NOTFOUND No
+such map} in reply.  The @samp{tempfail} database replies with the
+string @samp{TEMP Try again later}.
+
+@node dispatch rules
+@section Query Dispatch Rules
+@cindex dispatch rules
+@cindex rules, dispatch
+@kwindex dispatch
+  When a query arrives, @command{smapd} uses @dfn{query dispatch rules} to
+decide to what database to dispatch this query.  Dispatch rules are
+somewhat similar to ACLs: each rule consists of a set of conditions
+and a target part.  The rules are joined in a list.  When applied to a
+particular query, this list is scanned from top down.  The conditions
+of each rule are evaluated using the query as their argument.  If all
+conditions return @samp{True}, then the target part of this rule
+is applied.  The target part may either @dfn{transform} the map
+name and/or key value (a @dfn{transformation rule}), or indicate a
+database to dispatch this query to (a @dfn{destination rule}).  After
+applying a transformation rule, the scanning resumes at 
+the next rule.  Destination rules end the processing.
+
+If the list is exhausted without having found a matching destination
+rule, @command{smapd} sends back the default @samp{NOTFOUND} reply.
+
+@kwindex map
+  Consider for example the following rule:
+
+@example
+dispatch map eq alias database maildb
+@end example
+
+It says that if the map part of a query is the word @samp{alias}, then
+this query must be handled by the database @samp{maildb}.
+
+  The @code{map} condition allows for more sophisticated comparisons.
+If you use @samp{like}, instead of @samp{eq}, than shell-style
+globbing patterns are used.  For example, this rule
+
+@example
+dispatch map like us* database user
+@end example
+
+@noindent
+matches queries whose map part begins with @samp{us}.
+
+  Finally, you may also use regular expressions:
+
+@example
+dispatch map regexp /(alias)|(virtusers)/ database maildb
+@end example
+
+@xref{cond-map, The map condition}, for a detailed description of this
+condition.
+
+@kwindex from
+  Another important condition is @code{from}.  It returns @samp{True}
+if its argument, which is an IP address or a CIDR, matches the IP of
+the machine that sent the query.  For example, the following rule
+directs all queries coming from IP addresses 192.168.0.1 through
+192.168.0.31 to the database @samp{local}:
+
+@example
+dispatch from 192.168.0.0/27 database local
+@end example
+
+  Several conditions may be used together.  The result is @samp{True}
+if all conditions yield @samp{True}.  For example:
+
+@example
+dispatch from 192.168.0.0/27 \
+         map regexp /^(alias)|(virtuser)$/ \
+         database local-maildb
+@end example
+
+This rule dispatches to the database @samp{local-maildb} all queries
+coming from the network 192.168.0.0/27 and having @samp{alias} or
+@samp{virtuser} as their map part.
+
+  The @code{server} condition is often used together with @code{from}.
+Its argument is the id of a server (@pxref{servers, server id})
+declared in the configuration.  The condition returns @samp{True} if
+the query was sent to that particular server.  For example:
+
+@example
+dispatch from 192.168.0.0/27 \
+         server privileged
+         database secret
+dispatch from 192.168.0.0/27 database public
+@end example
+
+These rules dispatch to the database @samp{secret} any queries coming
+from IP address in network 192.168.0.0/27 and received by the server
+@samp{privileged}.  Queries from that network accepted by another
+servers are dispatched to the database @samp{public}.  It is, of
+course, supposed that somewhere in the configuration file there is a
+declaration, that looks like
+
+@example
+server privileged inet://192.168.0.1:3145
+@end example
+
+  The result of any condition may be reverted using the @samp{not}
+prefix before it, e.g.:
+
+@example
+dispatch from 192.168.0.0/27 \
+         not map regexp /^(alias)|(virtuser)$/ \
+         database user
+@end example
+
+@kwindex default, dispatch condition
+  There is a special condition which is convenient for the last rule
+in the list.  The @samp{default} condition always returns @samp{True},
+so this rule:
+
+@example
+dispatch default database nomap
+@end example
+
+@noindent
+will match any rule and dispatch it to a database named @samp{nomap}.
+The @samp{default} condition cannot be combined with other conditions.
+
+@node transformations
+@section Transformations
+@dfn{Transformations} are special rules that modify the key or map
+value.  Syntax of transformation rules is:
+
+@example
+dispatch @var{cond-list} transform @var{key-or-map} @var{dbname}
+@end example
+
+@noindent
+where @var{cond-list} is a condition list, as described in the
+previous section, @var{key-or-map} is @samp{key} if the transformation
+is applied to the key value and @samp{map} if it is applied to
+the map name, and @var{dbname} is the name of a database that
+handles the transformation.  For example:
+
+@example
+dispatch key like <*> transform key dequote
+@end example
+
+This rule applies the @samp{dequote} database to any key that is
+enclosed in angle brackets.  It is supposed that the @samp{dequote}
+database removes the brackets.  It may be implemented using the
+the @samp{sed} module (@pxref{sed,sed module}), as follows.
+
+@example
+module sed sed
+database dequote sed extended 's/<(.*)>/\1/g'
+@end example
+
+The transform rules can be chained, as in the example below:
+
+@example
+@group
+# @r{This database removes domain part from its argument}.
+database localpart sed 's/@@.*$//'
+
+# @r{Dispatch rules:}
+dispatch key like <*> transform key dequote
+dispatch key like *@@* transform key localpart
+dispatch default database getpwnam
+@end group
+@end example
+
+As a result, the @samp{getpwnam} database will get the local part of
+the original key (which may be supplied in the form of an email address).
+
+@node exit codes
+@section Smapd Exit Codes
+@cindex exit codes
+@kwindex EX_OK
+@kwindex EX_USAGE
+@kwindex EX_UNAVAILABLE
+@kwindex EX_CONFIG
+  The following table summarizes exit codes used by @command{smapd}.
+For each code it lists its decimal number, symbolic name from the
+@file{sysexits.h} header file, and its meaning.
+
+@multitable @columnfractions 0.1 0.4 0.5
+@headitem Code @tab Name @tab Meaning
+@item 0  @tab EX_OK @tab Normal termination.
+@item 64 @tab EX_USAGE @tab Command line usage error.
+@item 69 @tab EX_UNAVAILABLE @tab Some other error occurred.
+@item 78 @tab EX_CONFIG @tab Errors in configuration file detected.
+@end multitable
+
+@node smapd-options
+@chapter Command Line Syntax
+@cindex options, command line
+@cindex command line options
+  Most command line options have two forms, called short and long
+forms. Both forms are absolutely identical in function; they are
+interchangeable. 
+
+@cindex short option form
+@cindex option, short form
+  The @dfn{short} form is a traditional form for UNIX utilities.
+In this form, the option consists of a single dash, followed by a
+single letter, e.g. @option{-c}.
+
+  Short options which require arguments take their arguments
+immediately following the option letter, optionally separated by white
+space. For example, you might write @option{-f name}, or @option{-fname}.
+Here, @option{-f} is the option, and @option{name} is its argument.
+
+  Short options' letters may be clumped together, but you are not
+required to do this. When short options are clumped as a set, use one
+(single) dash for them all, e.g. @option{-cvl} is equivalent to @option{-c
+-v -l}. However, only options that do not take arguments may be
+clustered this way. If an option takes an argument, it can only be
+the last option in such a cluster, otherwise it would be impossible to
+specify the argument for it. Anyway, it is much more readable to
+specify such options separated.
+
+@cindex long option form
+@cindex option, long form
+  The @dfn{long} option names are probably easier to memorize than
+their short counterparts. They consist of two dashes, followed by a
+multi-letter option name, which is usually selected to be a mnemonics
+for the operation it requests. For example, @option{--verbose} is a
+long option that increases the verbosity of a utility. In addition,
+long option names can abbreviated, provided that such an abbreviation
+is unique among the options understood by a given utility. For
+example, if a utility takes options @option{--foreground} and
+@option{--forward}, then the shortest possible abbreviations for these
+options are @option{--fore} and @option{--forw}, correspondingly. If
+you try to use @option{--for}, the utility will abort and inform you
+that the abbreviation you use is ambiguous, so it is not clear which
+of the options you intended to use.
+
+  Long options which require arguments take those arguments following
+the option name. There are two ways of specifying a mandatory
+argument. It can be separated from the option name either by an equal
+sign, or by any amount of white space characters. For example, if the
+@option{--file} option requires an argument, and you wish to supply
+@file{name} as its argument, then you can do so using any of the
+following notations: @option{--file=name} or @option{--file name}.
+
+  The following table summarizes the options available for
+@command{smapd}.  For each option a brief description is given
+and a cross reference is provided to more in-depth explanation in the
+body of the manual.
+
+@table @option
+@smapdopidx{c, config}
+@item -c @var{file}
+@itemx --config=@var{file}
+Read configuration from @var{file}, instead of the default
+@file{/etc/smapd.conf}.  @xref{smapd,, --config}.
+
+@smapdopidx{t, lint}
+@item -t
+@itemx --lint
+Test configuration and exit with code @samp{0} if the file
+parsed without errors and @samp{78} otherwise.  Any errors found
+are reported on the standard error.  @xref{smapd,, --lint}.
+
+@smapdopidx{f, foreground}
+@item -f
+@itemx --foreground
+Do not detach from the controlling terminal, operate in foreground.
+
+@smapdopidx{e, stderr}
+@item -e
+@itemx --stderr
+Output diagnostic to stderr.  @xref{logging}.
+
+@smapdopidx{l, syslog}
+@item -l
+@itemx --syslog
+Output diagnostic to syslog (default).  @xref{logging}.
+
+@smapdopidx{s, single-process}
+@item -s
+@itemx --single-process
+Operate in single-process mode.  This option is intended to help in
+debugging @command{smapd}.  @emph{Do not use it in production
+environment!}
+
+@smapdopidx{i, inetd}
+@item -i
+@itemx --inetd
+Operate in inetd mode (@pxref{inetd-mode}).
+
+@smapdopidx{T, trace}
+@item -T
+@itemx --trace
+Trace queries and replies.  @xref{debugging,, Query traces}.
+
+@smapdopidx{p, trace-pattern}
+@item -p @var{pattern}
+@itemx --trace-pattern=@var{pattern}
+Trace only queries that begin with the given @var{pattern}.
+@xref{trace-pattern}.
+
+@smapdopidx{d, debug}
+@item -d @var{level}
+@item -x @var{level}
+@itemx --debug=@var{level}
+Set debug verbosity level.  @xref{debugging,,Debugging information}.
+The @option{-x} alias is for compatibility with version 1.0 and will
+be removed in subsequent releases.
+
+@smapdopidx{L, log-tag}
+@item -L
+@itemx --log-tag=@var{tag}
+Set syslog tag.  @xref{logging}.
+
+@smapdopidx{F, log-facility}
+@item -F @var{facility}
+@itemx --log-facility=@var{facility}
+Set syslog facility.  @xref{logging,, log-facility}.
+
+@smapdopidx{h, help}
+@item  -h
+@itemx --help
+Give a concise summary of the command line options.
+
+@opindex --usage, --usage option, @command{smapd}
+@item --usage
+Give a short usage reminder.
+
+@smapdopidx{V, version}
+@item -V
+@itemx --version
+Print program version.
+@end table
+
+@node smapd-config
+@chapter Smapd Configuration File
+@cindex configuration file, @command{smapd}
+  The @command{smapd} configuration file consists, on a lexical level,
+of logical lines.  A @dfn{logical line} is any sequence of characters
+between two unescaped newline characters.  The word @samp{unescaped}
+means a newline character not preceded by a single backslash.  Thus,
+escaped newlines allow to combine several physical lines into a single
+logical one.
+
+@cindex comments, configuration
+  Within a logical line, unescaped @samp{#} character introduces a
+comment.   The character itself and the rest of characters after it up
+to the end of line are ignored.
+
+  Empty lines are ignored as well.
+
+@cindex configuration statement
+@cindex statement, configuration
+  Each not empty line constitutes a @dfn{configuration statement}.
+Before further processing the statement is subject to the following
+@dfn{expansions}:
+
+@table @asis
+@cindex variable substitution
+@item variable substitution
+Variable substitution consists in replacing each sequence
+@samp{$@var{name}} or @samp{$@{@var{name}@}} with the value of the
+@dfn{variable} @var{name}.  Valid variable names begin with a letter
+of the Latin alphabet or underscore and consist of alphanumeric
+symbols and underscores.  Variable names are case-sensitive.
+Variables are expanded in unquoted and doubly-quoted arguments.
+Variable expansion is suppressed within single-quoted strings (see below).
+
+@cindex field splitting
+@item field splitting
+A @dfn{word} is defined as any contiguous sequence of non-whitespace
+characters or any sequence of characters enclosed in double or single
+quotes.  Standalone words and doubly-quoted strings are subject to
+variable substitution and escape expansion.
+
+@cindex escape expansion
+@item escape expansion
+A backslash character introduces an @dfn{escape sequence}.  The
+following escape sequences are expanded: 
+
+@cindex escape sequences
+@float Table, escape-sequences
+@caption{Escape sequences}
+@multitable @columnfractions 0.30 .5
+@item Sequence @tab Replaced with
+@item \a @tab Audible bell character (@acronym{ASCII} 7)
+@item \b @tab Backspace character (@acronym{ASCII} 8)
+@item \f @tab Form-feed character (@acronym{ASCII} 12)
+@item \n @tab Newline character (@acronym{ASCII} 10)
+@item \r @tab Carriage return character (@acronym{ASCII} 13)
+@item \t @tab Horizontal tabulation character (@acronym{ASCII} 9)
+@item \v @tab Vertical tabulation character (@acronym{ASCII} 11)
+@end multitable
+@end float
+
+A @samp{\} followed by any character not listed in the table above is
+replaced with that character alone.  This allows, for example, to
+include double-quote characters in a doubly-quoted string.
+
+@cindex quote removal
+@item quote removal
+This stage consists in removing unescaped single and double quotes,
+which where not inserted due to variable expansion.
+@end table
+
+  If, after expansion, the statement consists of a single word that
+begins with a valid variable name immediately followed by an equals
+sign, such statement is treated as a @dfn{variable assignment}.  The
+string to the right of the equals sign is assigned to the variable
+named to the left of it.
+
+  Otherwise, if the statement has two or more words, the first word is
+treated as a @dfn{keyword}, which identifies a configuration
+statement, and the rest of words as its arguments.
+
+  The following configuration statements are understood.
+
+@deffn {Config} inetd-mode bool
+  If @var{bool} is @samp{yes}, enable inet mode (@pxref{inetd-mode}).
+@end deffn
+
+@deffn {Config} pidfile filename
+  Write pidfile to the file @var{filename}.
+@end deffn
+
+@deffn {Config} foreground bool
+  If @var{bool} is @samp{yes}, run in foreground.  This also means
+that log output goes to standard error, unless requested otherwise by
+@samp{log-to-syslog} statement or @option{--syslog} command line option.
+@end deffn
+
+@deffn {Config} idle-timeout number
+  Sets @dfn{idle timeout} to @var{number} seconds.  A child process
+terminates if it has not received any request within this amount of
+time.
+@end deffn
+
+@deffn {Config} log-to-stderr bool
+  If @var{bool} is @samp{yes} send log output to standard error.
+@end deffn
+
+@deffn {Config} log-to-syslog bool
+  If @var{bool} is @samp{yes} send log output to syslog.
+@end deffn
+
+@anchor{log-tag}
+@deffn {Config} log-tag string
+  Tag each log line in syslog with @var{string}.  By default, the name
+of the program (@samp{smapd}) is used.
+@end deffn
+
+@anchor{conf-log-facility}
+@deffn {Config} log-facility fac
+  Write logs to the syslog facility @var{fac}.  Valid values for 
+@var{fac} are: @samp{user}, @samp{daemon}, @samp{auth}, @samp{authpriv},
+@samp{mail}, @samp{cron}, and @samp{local0} through @samp{local7}.
+
+  Default is @samp{daemon}. 
+@end deffn
+
+@deffn {Config} debug dspec1 [dspec2...]
+  Enable debugging output according to the given specifications.
+@xref{debugging}, for a description of specifications.
+@end deffn
+
+@deffn {Config} trace bool
+  If @var{bool} is @samp{yes} enable query traces.  @xref{debugging,
+Query traces}.
+@end deffn
+
+@deffn {Config} trace-pattern pat1 [pat2...]
+  Abridge query trace output to queries beginning with the given
+patterns.  @xref{trace-pattern}.
+@end deffn
+
+@deffn {Config} user name
+  After startup, switch to UID and GID of the user @var{name}.
+@end deffn
+
+@deffn {Config} group name1 [name2 ...]
+  When switching to user privileges (see above), retain also these
+supplementary groups.
+@end deffn
+
+@deffn {Config} allgroups bool
+  When switching to user privileges (see above), retain all
+supplementary groups the user is a member of.
+@end deffn
+
+@deffn {Config} socket-mode mode
+  Set default file mode for creating UNIX sockets.  The @var{mode} argument
+must be either in octal notation (e.g. @samp{600}), or in
+@command{chmod}-style notation (e.g. @samp{rw-------}).
+
+  Default mode is @samp{600}.
+@end deffn
+
+@deffn {Config} shutdown-timeout seconds
+  Sets the number of seconds to wait for all children to terminate before
+shutdown, after sending them the @samp{SIGTERM} signal.   Any children
+remaining active after this timeout are terminated forcefully using
+@samp{SIGKILL}.
+
+  Default value is 5 seconds.
+@end deffn
+
+@deffn {Config} backlog number
+  Sets the maximum size of pending connections queue for sockets.  If a
+connection request arrives when the queue is full, the client receives an
+error with an indication of @samp{ECONNREFUSED}.
+
+Default backlog is 8. 
+@end deffn
+
+@deffn {Config} reuseaddr bool
+  If @var{bool} is @samp{yes} reuse existing socket addresses (both
+INET and UNIX).  This is the default.
+@end deffn
+
+@deffn {Config} max-children number
+  Maximum number of children processes allowed to run simultaneously.
+When the actual number of children reaches @var{number}, the server
+stops refusing further connections until any of them terminates.  The
+value of @samp{0} means @samp{unlimited}.
+
+The default limit is @samp{128}.
+@end deffn
+
+@deffn {Config} single-process bool
+  Operate in single-process mode.  This option may be necessary only
+when debugging @command{smapd}.  @emph{Never use it in production
+environment!}
+@end deffn
+
+@anchor{config-server}
+@deffn {Config} server name address [block]
+  Configure a server.  The @var{name} argument gives its symbolic
+name, which will be used in logs to identify it.  The @var{address}
+argument specifies network address to listen on.  As of version
+@value{VERSION} two kind of addresses are recognized:
+
+@table @asis
+@item inet://@var{ip}:@var{port}
+  Listen on the IPv4 address @var{ip}, on the given @var{port}.  IP
+address may be given either in ``dotted-quad'' form or as a hostname.
+Port may be specified either as a port number, or as a name of a
+service from @file{/etc/services}.
+
+@item unix://@var{pathname}
+  Listen on the UNIX socket @var{pathname}.  Notice that the name of the
+socket must be absolute, so you would usually have three slashes
+together.  For example, the following statement will listen on a
+socket named @file{/var/run/smap.sock}:
+
+@example
+server main unix:///var/run/smap.sock
+@end example
+@end table
+
+  Optional @var{block} is a @dfn{block statement} consisting of the
+word @samp{begin} followed by a newline, one or more configuration
+statements and the word @samp{end} alone on a line.  For example:
+
+@example
+@group
+server main unix:///var/run/smap.sock begin
+  user smap
+  allgroups yes
+end
+@end group
+@end example
+
+  The statements within block apply only to that particular server.
+That is, in the example above, the connections requested on the server
+@var{main} will be handled by a subprocess with privileges of the user
+@var{smap}, retaining all the supplementary groups of this user.  The
+following statements are allowed for use in the block statement:
+
+@itemize @bullet
+@item allgroups
+@item backlog
+@item group
+@item max-children
+@item reuseaddr
+@item single-process
+@item user
+@item socket-mode
+@item socket-owner
+@end itemize
+
+  Their meaning is the same as of the corresponding statements in
+global scope (see above), but applies to that particular server only.
+@end deffn
+
+@deffn {Config} load-path path
+  Add @var{path} to the current set of directories searched for module
+files.  @var{Path} is a list of directory names separated by colons.
+@end deffn
+
+@deffn {Config} module modname libname [args...]
+  Declare new module.  Arguments are:
+
+@table @var
+@item modname
+A name which uniquely identifies this module in the configuration.  It
+will be used to associate databases with this module.
+
+@item libname
+Name of the shared library file (without suffix) to load.
+
+@item args...
+Arguments to the module initialization function.
+@end table
+@end deffn
+
+@anchor{config-database}
+@deffn {Config} database dbname modname [args...]
+Define a database @var{dbname} and associate it with the module
+@var{modname}, which must be loaded by a prior @code{module}
+statement.  Optional @var{args} are passed to the database
+initialization function verbatim.
+@end deffn
+
+@deffn {Config} dispatch cond target
+Dispatch incoming queries.
+
+@var{Cond} is a list of conditions that must be satisfied in order to
+dispatch this query to @var{target}.  Conditions are separated by any
+amount of whitespace.  They are evaluated from left to right and are
+joined using boolean @samp{AND} so that @var{cond} yields @samp{True}
+only if all conditions evaluate to @samp{True}.  Supported conditions
+are:
+
+@deffn {Condition} from ipaddr
+Returns @samp{True} if the IP address of the client equals
+@var{ipaddr}.   The latter may be given either as an IP address or
+as a host name, in which case it will be resolved and the first of
+its IP addresses will be used.
+@end deffn
+
+@deffn {Condition} from ipaddr/netmask
+Returns @samp{True} if the result of logical @samp{AND} between the
+client IP address and @var{netmask} equals to @var{ipaddr}.  The
+network mask must be specified in ``dotted quad'' form, e.g.:
+
+@example
+from 10.1.10.1/255.255.255.224
+@end example
+@end deffn
+
+@deffn {Condition} from ipaddr/netlen
+Returns @samp{True} if first @var{netlen} bits from the client IP
+address equal to @var{ipaddr}.  The network mask length, @var{netlen}
+must be an integer number in the range from 0 to 32.  The address
+part, @var{ipaddr}, is as  described above.  For example:
+
+@example
+from 10.1.10.1/27
+@end example
+@end deffn
+
+@deffn {Condition} server name
+@samp{True} if this query is being served by server @var{name}
+(@pxref{config-server, name}).
+@end deffn
+
+@anchor{cond-map}
+@deffn {Condition} map op string
+@samp{True} if the map name part of the query (@pxref{Protocol,map})
+matches @var{string}.  The @var{op} part specifies the comparison
+algorithm:
+
+@table @asis
+@item eq
+@itemx is
+Literal equality.  Map name must be exactly the same as @var{string}.
+
+@cindex globbing patterns
+@cindex pattern, globbing
+@item like
+@itemx fnmatch
+Match using shell wildcard patterns (@pxref{glob,Globbing
+patterns,,glob(7), Glob(7) man page}).
+
+@cindex regular expressions
+@cindex expression, regular
+@item regexp
+Match using regular expressions.  @var{String} must have the following
+form:
+
+@example
+/@var{expr}/@var{flags}
+@end example
+
+The slashes may be uniformly replaced with any other punctuation
+character.  The @var{expr} must constitute a valid regular expression.
+The @var{flags} are optional.  When given, they allow to control the
+type of the regular expression:
+
+@multitable @columnfractions 0.1 0.9
+@headitem Flag @tab Meaning
+@item i @tab Use case-insensitive matching
+@item x @tab @var{expr} is an @dfn{extended regular expression}.  This
+is the default setting.
+@item b @tab @var{expr} is a @dfn{basic regular expression}.
+@end multitable
+
+@xref{Extended regexps, Extended regular expressions, Extended
+regular expressions, sed, GNU sed}, for a description of Extended
+regular expressions.
+@end table
+@end deffn
+
+@deffn {Condition} key op string
+@samp{True} if the key value (@pxref{Protocol,key})
+matches @var{string}.  The @var{op} argument has the
+same meaning as for @code{map} above.
+@end deffn
+
+@deffn {Condition} not cond
+Reverts the value returned by @var{cond}, which is one of the
+conditions described above.  For example:
+
+@example
+not map like "local*"
+@end example
+@end deffn
+
+@deffn {Condition} default
+Always @samp{True}.  This must be the only condition in @var{cond}.
+It is useful to declare default query destination.
+@end deffn
+
+The @var{target} instructs the server to direct this query to a
+particular database.  The syntax is:
+
+@deffn {Target} database dbname
+Pass this query to the database @var{dbname} (@pxref{config-database,dbname}).
+@end deffn
+@end deffn
+
+@node modules
+@chapter Modules Shipped with Smap
+@cindex module installation directory
+  Smap is shipped with a set of loadable modules, which are installed
+in its default module directory, @file{@var{$prefix}/lib/smap}.  The
+modules are configurable on a per-module (@pxref{loadable modules}),
+and per-database (@pxref{databases}) levels.
+
+  Smap version @value{VERSION} contains the following modules:
+@samp{echo}, @samp{mailutils} and @samp{guile}.  These are described
+in detail in the following sections.
+
+@menu
+* echo::
+* mailutils::
+* guile::
+* mysql::
+* postgres::
+* ldap::
+* sed::
+@end menu
+
+@node echo
+@section Echo
+@kwindex echo
+  The echo module is the simplest of all modules.  It sends back a
+static reply string, no matter what the query was.  This module is
+useful for default databases, which catch erroneous or not handled
+queries.
+
+@subheading Loading
+The module needs no additional arguments for initialization.  Normal
+loading statement is:
+
+@example
+module echo echo
+@end example
+
+@subheading Database
+Database initialization function treats its arguments as a string to
+be sent in reply to all queries.  An example database definition:
+
+@example
+database default echo NOTFOUND [no such map]
+@end example
+
+Such a definition is normally used as a target of the @samp{default}
+dispatch rule:
+
+@example
+dispatch default database default
+@end example
+
+@node mailutils
+@section Mailutils
+@kwindex mailutils
+  This module uses GNU Mailutils
+(@uref{http://www.gnu.org/software/mailutils}) and provides two main
+modes:
+
+@table @samp
+@cindex auth, mailutils mode
+@item auth
+This mode uses GNU Mailutils authorization mechanism to obtain
+user data (similar to the system @samp{getpwnam} routine) and returns
+positive reply if the data were retrieved and negative reply
+otherwise.  @xref{MeTA1}, for an example on how to use it as a local
+user and alias database.
+
+@cindex mbq, mailutils mode
+@item mbq
+This mode allows to check whether the user's mailbox exceeded the
+allotted quota, and if not, whether it is able to accept a message
+of the given size without exceeding it.  The mode name is an
+abbreviation of @dfn{Mailbox Quota}.  
+@end table
+
+@menu
+* expansion::       Variable Expansion
+* load-mailutils::  Loading Sequence
+* db-mailutils::    Mailutils Databases
+* auth::            Mailutils Auth Mode
+* mbq::             Mailutils MBQ Mode
+@end menu
+
+@node expansion
+@subsection Variable Expansion
+@cindex variable expansion
+@cindex expansion, variable
+  In the discussion below we often refer to @dfn{meta-variable
+expansion} in strings.  This is a process, whereby any sequence
+@samp{$@{@var{variable}@}} is replaced with the value of
+@var{variable}.  The defined variables are:
+
+@table @asis
+@kwindex db
+@item db
+The database name.
+@kwindex map
+@item map
+The map name.
+@kwindex key
+@item key
+The lookup key.
+@kwindex diag
+@item diag
+If the key was not found or some error occurred, this variable expands
+to a short diagnostics string, suitable for return message.
+Otherwise, expands to empty string.
+@kwindex name
+@item name
+The @samp{name} field from the retrieved record.  Empty string if
+the user not found.
+@kwindex passwd
+@item passwd
+The @samp{passwd} field from the retrieved record.  Empty string if
+the user not found.
+@kwindex uid
+@item uid
+The @samp{uid} field from the retrieved record.  If the user was not
+found, expands to @samp{-1}.
+@kwindex gid
+@item gid
+The @samp{gid} field from the retrieved record.  If the user was not
+found, expands to @samp{-1}.
+@kwindex gecos
+@item gecos
+The @samp{gecos} field from the retrieved record.  Empty string if
+the user not found.
+@kwindex dir
+@item dir
+The @samp{dir} field from the retrieved record.  Empty string if
+the user not found.
+@kwindex shell
+@item shell
+The @samp{shell} field from the retrieved record.  Empty string if
+the user not found.
+@kwindex mailbox
+@item mailbox
+The @samp{mailbox} field from the retrieved record.  Empty string if
+the user not found.
+@kwindex quota
+@item quota
+The @samp{quota} field from the retrieved record.  If the user was not
+found, expands to @samp{NONE}.
+@kwindex mbsize
+@item mbsize
+Mailbox size, in bytes.  Defined only in @samp{mbq} mode.
+@kwindex msgsize
+@item msgsize
+Expected message size, in bytes.  Defined only in @samp{mbq} mode.
+@end table
+
+@node load-mailutils
+@subsection Mailutils Loading Sequence
+
+@example
+module mailutils mailutils [args]
+@end example
+
+Arguments are:
+
+@table @option
+@kwindex config-verbose
+@item config-verbose
+Verbosely trace the processing of the main Mailutils configuration
+files.
+
+@kwindex config-dump
+@item config-dump
+Dump the parse tree from the Mailutils configuration.
+
+@kwindex positive-reply
+@item positive-reply=@var{str}
+Declare default positive reply string.  This string is returned when
+the underlying database was able to found the requested key.  Prior
+to returning, @var{str} is subject to meta-variable expansion, as described
+above.
+
+Default positive reply string is @samp{OK}.
+
+@kwindex negative-reply
+@item negative-reply=@var{str}
+Declare default negative reply string.  This string is returned when
+the underlying database failed to found the requested key.  Prior
+to returning, @var{str} is subject to meta-variable expansion.
+
+Default negative reply string is @samp{NOTFOUND}.
+
+@kwindex onerror-reply
+@item onerror-reply=@var{str}
+Declare a reply to be returned on error.  Prior
+to returning, @var{str} is subject to meta-variable expansion.
+Default string is @samp{NOTFOUND}.
+@end table
+
+@cindex configuration file, mailutils
+@cindex mailutils configuration file
+  The module reads most of its configuration settings from the main
+Mailutils configuration file.  @xref{configuration, Mailutils Configuration
+File,, mailutils, GNU Mailutils Manual}, for a description of GNU
+Mailutils configuration system.  It looks for @command{smap}-specific
+settings in the section @samp{program smap-mailutils}.
+
+@multitable @columnfractions 0.3 0.6
+@headitem Statement @tab Reference
+@item server @tab @xref{Server Settings, Mailutils Configuration File,,
+mailutils, GNU Mailutils Manual}.
+@item auth  @tab @xref{Auth Statement, Mailutils Configuration File,,
+mailutils, GNU Mailutils Manual}.
+@item pam   @tab @xref{PAM Statement, Mailutils Configuration File,,
+mailutils, GNU Mailutils Manual}.
+@item virtdomain @tab @xref{Virtdomain Statement,
+Mailutils Configuration File,, mailutils, GNU Mailutils Manual}.
+@item radius @tab @xref{Radius Statement, Mailutils Configuration File,,
+mailutils, GNU Mailutils Manual}.
+@item sql  @tab @xref{SQL Statement, Mailutils Configuration File,,
+mailutils, GNU Mailutils Manual}.
+@item ldap @tab @xref{LDAP Statement, Mailutils Configuration File,,
+mailutils, GNU Mailutils Manual}.
+@item debug @tab @xref{Debug Statement, Mailutils Configuration File,,
+mailutils, GNU Mailutils Manual}.
+@item logging @tab @xref{Logging Statement, Mailutils Configuration File,,
+mailutils, GNU Mailutils Manual}.
+@item include @tab @xref{Include, Mailutils Configuration File,,
+mailutils, GNU Mailutils Manual}.
+@end multitable
+
+  The module uses GNU Mailutils authorization databases to obtain
+the requested data.  This concept is described in detail in
+@ref{Auth Statement, Mailutils Configuration File,, mailutils,
+GNU Mailutils Manual}.
+
+@node db-mailutils
+@subsection Mailutils Databases
+  Mailutils databases are normally declared as follows:
+
+@example
+database @var{name} mailutils mode=@var{mode} [@var{args}]
+@end example
+
+Here, @var{name} is the database name, @var{mode} is @samp{auth} if
+the database should work in auth mode, and @samp{mbq} if it should
+run in mbq mode.  If the @samp{mode} argument is omitted, @samp{auth}
+is assumed.  Optional @var{args} may be used to supply additional
+database configuration.  These are:
+
+@table @option
+@kwindex positive-reply
+@item positive-reply=@var{str}
+Declare positive reply string.  This string is returned when
+the underlying database was able to found the requested key.  Prior
+to returning, @var{str} is subject to meta-variable expansion, as described
+above.
+
+Default positive reply string is @samp{OK}, unless overridden by the
+module-level @option{positive-reply} option (@pxref{db-mailutils,
+positive-reply}.
+
+@kwindex negative-reply
+@item negative-reply=@var{str}
+Declare negative reply string.  This string is returned when
+the underlying database failed to found the requested key.  Prior
+to returning, @var{str} is subject to meta-variable expansion.
+
+Default negative reply string is @samp{NOTFOUND}, unless overridden by the
+module-level @option{positive-reply} option (@pxref{db-mailutils,
+negative-reply}.
+
+@kwindex onerror-reply
+@item onerror-reply=@var{str}
+Declare a reply to be returned on error.  Prior
+to returning, @var{str} is subject to meta-variable expansion.
+Default string is @samp{NOTFOUND}, unless overridden by the
+module-level @option{positive-reply} option (@pxref{db-mailutils,
+onerr-reply}.
+@end table
+
+@node auth
+@subsection Mailutils Auth Mode
+@cindex auth mode, mailutils
+  Mailutils module in @samp{auth} mode uses GNU Mailutils
+authorization mechanism to obtain user data.  It returns
+@samp{positive-reply} if the data were retrieved and @samp{negative-reply}
+otherwise.  This mode is often used for databases of local users and
+aliases.  The key is normally a user name (either local part or fully
+qualified).
+
+  @xref{MeTA1}, for an example on how to use it.
+  
+@cindex mbq mode, mailutils  
+@node mbq
+@subsection Mailutils MBQ Mode
+  @acronym{MBQ}, or @dfn{Mailbox Quota} mode, uses key as the name of
+a local user.  It obtains the user parameters via Mailutils
+authorization mechanism and then switches to this user privileges and
+opens his mailbox for a brief period of time.  After opening it
+determines the mailbox size and closes it.  The mode returns
+@samp{positive-reply} if the mailbox size is less than the quota,
+and @samp{netagive-reply} otherwise.
+
+If the key value consists of two words, separated by whitespace,
+then the first word is used as a user name, and the second one as
+a size of a message which is about to be delivered to that user's
+mailbox (the size may be optionally prefixed by @samp{SIZE=}).  In
+this case, @samp{positive-reply} is returned if the actual mailbox
+size plus the message size is less than quota.
+
+Two additional meta-variables may be used in reply templates to return
+quota-related information:
+
+@table @asis
+@kwindex mbsize
+@item mbsize
+Mailbox size, in bytes.  Defined only in @samp{mbq} mode.
+@kwindex msgsize
+@item msgsize
+Expected message size, in bytes.  Defined only in @samp{mbq} mode.
+@end table
+
+The following example shows a definition of @samp{mbq} database which
+the author uses on his servers:
+
+@example
+database mbq mailutils mode=mbq \
+  positive-reply="OK [$@{diag@}] $@{mailbox@} $@{mbsize@} $@{quota@}"\
+  negative-reply="NOTFOUND [$@{diag@}] $@{mailbox@} $@{mbsize@} $@{quota@}"\
+  onerror-reply="NOTFOUND [$@{diag@}]"
+@end example
+
+The @samp{diag} meta-variable contains a diagnostic string suitable
+for passing it back to the @acronym{MTA}.  For example, in the case
+of @samp{negative-reply}, @samp{$@{diag@}} expands to:
+
+@example
+mailbox quota exceeded for this recipient
+@end example
+
+@noindent
+if the mailbox has grown beyond the allowed quota, and
+
+@example
+message would exceed maximum mailbox size for this recipient
+@end example
+
+@noindent
+if message of the given size cannot be delivered to mailbox without
+violating its quota.
+
+  Notice, that this mode requires superuser privileges.
+
+@node guile
+@section Guile
+@cindex guile module
+  @dfn{Guile} is an acronym for @dfn{GNU's Ubiquitous Intelligent
+Language for Extensions}. It provides a Scheme interpreter conforming
+to the R5RS language specification and a number of convenience
+functions.  For information about the language, refer to
+@ref{Top,,,r5rs,Revised(5) Report on the Algorithmic Language Scheme}.
+For a detailed description of Guile and its features, see
+@ref{Top,,Overview,guile,The Guile Reference Manual}.
+
+  The @command{guile} module provides an interface to Guile which
+allows for writing Smap modules in Scheme.  The module is loaded
+using the following configuration file statement:
+
+@example
+module @var{name} guile [@var{args}]
+@end example
+
+  Optional @var{args} are:
+
+@table @option
+@kwindex debug
+@item debug
+  Enable Guile debugging and stack traces.
+
+@kwindex nodebug
+@item nodebug
+  Disable Guile debugging and stack traces (default).
+
+@kwindex load-path
+@item load-path=@var{path}
+  Append directories from @var{path} to the list of directories which
+should be searched for Scheme modules and libraries.  The @var{path}
+must be a list of directory names, separated by colons.
+
+  This option modifies the value of Guile's @code{%load-path}
+variable.
+@c FIXME: Texi2html is unable to handle \, in the section title. This
+@c conditional overrides this bug.
+@ifnothtml
+@xref{Build Config, %load-path,
+Configuration Build and Installation, guile, The Guile Reference Manual}.
+@end ifnothtml
+@ifhtml
+See the section @uref{http://www.gnu.org/software/guile/manual/html_node/Build-Config.html, Configuration and Installation} in the Guile Reference Manual.
+@end ifhtml
+
+@kwindex init-script
+@item init-script=@var{script}
+ Specifies the name of a Scheme source file that must be loaded in
+order to initialize the module.  The file is looked up using
+@samp{%load-path} variable.
+
+@kwindex init-args
+@item init-args
+  The @code{init-args} parameter supplies additional arguments to the
+module.  They will be accessible to the @file{@var{script}} via
+the @code{command-line} function.
+
+@kwindex init-fun
+@item init-fun
+  This parameter specifies the name of a function that
+will be invoked to perform the initialization of the module and of
+particular databases.  Default name is @samp{init}.  @xref{Guile
+Initialization}, for a description of initialization sequence.
+@end table
+
+  Guile databases are declared using the following syntax:
+
+@anchor{guile-cmdline}
+@example
+database @var{dbname} @var{modname} [@var{args}] [@var{cmdline}]
+@end example
+
+where: @var{dbname} gives the name for this database and @var{modname}
+is the name given to Guile module in @code{module} statement (see
+above).
+
+@kwindex init-script
+@kwindex init-args
+@kwindex init-fun
+Optional @var{args} override global settings given in the
+@code{module} statement.  The following options are understood:
+@code{init-script}, @code{init-args}, and @code{init-fun}.  Their
+meaning is the same as for @code{module} statement (see above),
+except that they affect only this particular database.
+
+Any additional arguments, referenced as @var{cmdline} above, are
+be passed to the Guile @code{open-db} callback function (@pxref{open-db}).
+
+@menu
+* Virtual Functions::
+* Guile Output Ports::
+* Guile Initialization::
+* Guile API::
+@c * Guile Example Module::
+@end menu
+
+@node Virtual Functions
+@subsection Virtual Functions
+@cindex virtual functions, guile module
+  Any database handled by @command{guile} module is associated with a 
+@var{virtual function table}.  This table is an association list which
+supplies to the module the Scheme @dfn{call-back functions} implemented to
+perform particular tasks on that database.  In this list,
+the @code{car} of each element contains the name of a function, and
+its @code{cdr} gives the corresponding function.  The defined function
+names and their semantics are described in the following table:
+
+@table @asis
+@kwindex init
+@item init
+Initialize the module.
+
+@kwindex done
+@item done
+Close the module, releasing any resources held by it.
+
+@kwindex open
+@item open
+Open the database.
+
+@kwindex close
+@item close
+Close the database.
+
+@kwindex query
+@item query
+Handle a socket map query
+
+@kwindex xform
+@item xform
+Handle a transformation request (@pxref{transformations}).
+@end table
+
+For example, the following is a valid virtual function table:
+
+@lisp
+@group
+(list (cons "open" open-module)
+      (cons "close" close-module)
+      (cons "query" run-query))
+@end group
+@end lisp
+
+Apart from per-database virtual tables, there is also a global
+virtual function table, which is used to supply the entries missing in
+the former.  Both tables are created during the module initialization,
+as described in the next subsection.
+
+Particular virtual functions are described in @ref{Guile API}.
+
+@node Guile Output Ports
+@subsection Guile Output Ports
+@cindex output ports, Guile
+  Guile modules are executed in a specially prepared environment.
+Current error port is redirected so that everything written to it ends
+up in the @command{smapd} error stream.  So, if @command{smapd} is
+writing its log to syslog, everything you write to
+@samp{(current-error-port)} will be written to syslog as well.  The
+port is line-buffered.  For example, the following code:
+
+@lisp
+(with-output-to-port
+  (current-error-port)
+ (lambda ()
+   (display "The diagnostics follows:")
+   (newline)
+   (display "Module opened")
+   (newline)))
+@end lisp
+
+@noindent
+will result in two lines in your syslog file, which will look like
+
+@example
+@group
+Jun 19 12:49:05 netbox smapd[7503]: The diagnostics follows
+Jun 19 12:49:05 netbox smapd[7503]: Module opened
+@end group
+@end example
+
+@kwindex smap-debug-port
+For any debugging output, use @code{smap-debug-port}.  This port is
+configured so that everything written to it is explicitly marked as
+being debug output.  If @command{smapd} logs to stderr, it will be
+prefixed with @samp{DEBUG:}, and if it logs to syslog, the output will
+be logged with @samp{LOG_DEBUG} priority.
+
+Finally, current output port is closed for any functions, excepting
+@samp{query} (@pxref{query-db}).  For @samp{query} function, it is
+redirected so that anything written to it is reformatted according to
+the socket map protocol (@pxref{Protocol}) and sent back as a reply to
+the client.
+
+@node Guile Initialization
+@subsection Guile Initialization
+  The @code{module} configuration statement causes loading and
+initialization of the @command{guile} module: 
+
+@example
+@group
+module @var{modname} guile [init-script=@file{@var{script}}] \
+                           [init-fun=@var{function}"]
+@end group
+@end example
+
+@kwindex init-script
+@kwindex init-fun
+  Upon module initialization stage, the module attempts to load the
+file named @file{@var{script}}.  The file is loaded using
+@code{primitive-load-path} call (@pxref{Loading, primitive-load-path, Loading,
+guile, The Guile Reference Manual}), i.e. it is searched in the Guile
+load path.  The @code{init-fun} parameter supplies the name of the
+@dfn{initialization function}.  This Scheme function returns virtual 
+function tables for the module itself and for each database that uses
+this module.  It must be declared as follows:
+
+@lisp
+(define (@var{function} arg)
+  @dots{})
+@end lisp
+
+This function is called several times.  First of all, it is called after
+@var{script} is loaded.  This time it is given @code{#f} as its
+argument, and its return value is saved as a global function table.
+Then, it is called for each @code{database} statement that uses module
+@var{modname} (defined in the @code{module} statement above), e.g.:
+
+@example
+database @var{dbname} @var{modname} @dots{}
+@end example
+
+This time, it is given @var{dbname} as its argument and its return is
+stored as the virtual function table for this particular database.
+
+The following example function returns a complete virtual function table:
+
+@lisp
+@group
+(define (my-smap-init arg)
+  (list (cons "init" db-init)
+        (cons "done" db-done)
+        (cons "open" db-open)
+        (cons "close" db-close)
+        (cons "query" db-query)
+        (cons "xform" db-xform)))
+@end group
+@end lisp
+
+@node Guile API
+@subsection Guile API
+@cindex Guile API  
+
+  This subsection describes callback functions that a Guile
+database module must provide.  The description of each function begins
+with the function prototype and its entry in the virtual function
+table.
+
+
+@anchor{open-db}
+@deffn {Guile Callback} open-db name . args
+Virtual table: @code{(cons "open" open-db)}@*
+
+Open the database.  The argument @var{name} contains database name as
+given in @code{dbname} of the @code{database} declaration
+(@pxref{databases}).  Optional argument @var{args} is a list of
+command line parameters obtained from @var{cmdline} in @code{database}
+statement (@pxref{guile-cmdline}).  For example, if the configuration
+file contained: 
+
+@example
+database foo guile db=file 1 no
+@end example
+
+@noindent
+then the @code{open-db} callback will be called as:
+
+@lisp
+(open-db "foo" '("db=file" "1" "no"))
+@end lisp
+
+The @code{open-db} callback returns a @dfn{database handle}, i.e. an
+opaque Scheme object which identifies this database, and keeps its
+internal state.  This value, hereinafter named @var{dbh}, 
+will be passed to another callback functions that need to access the
+database.
+
+The unspecified return value indicates an error.
+@end deffn
+
+@deffn {Guile Callback} close-db dbh
+Virtual Table: @code{(cons "close" close-db)}@*
+
+Close the database.  This function is called during the cleanup
+procedure, before termination of @code{smapd} child process.  The
+argument @code{dbh} is a database handle returned by @code{open-db}.
+
+The return value from @code{close-db} is ignored.  To communicate
+errors to the daemon, throw an exception.
+@end deffn
+
+@anchor{query-db}
+@deffn {Guile Callback} query-db dbh map key . rest
+Virtual Table: @code{(cons "close" close-db)}@*
+  Perform the query.  Arguments are:
+
+@table @var
+@item dbh
+A database handle returned by @code{open-db}.
+
+@item map
+The map name.
+
+@item key
+The lookup key
+
+@item rest
+If this query came over a UNIX socket, this argument is @samp{()}.
+Otherwise, if the query came over an INET socket, @var{rest} is a list
+of two network socket addresses (@pxref{Network Socket
+Address,,,guile, The Guile Reference Manual}): first element is the
+address of the remote party (client), second element is the address of
+the server that is handling the query.
+@end table
+
+  This function must write the reply, terminated with a newline, to
+the current output port, e.g.:
+
+@lisp
+@group
+(define-public (smap-query handle map arg . rest)
+  (display "NOTFOUND")
+  (newline))
+@end group
+@end lisp
+@end deffn
+
+@deffn {Guile Callback} xform-db dbh arg . rest
+Virtual Table: @code{(cons "xform" xform-db)}@*
+Transform the argument @var{arg}.  Arguments @var{dbh} and
+@var{rest} have the same meaning as in @ref{query-db}.
+
+Returns transformed value or @samp{#f} if no transformation applies.
+This callback may be used to alter map or key values using
+@samp{guile} module (@pxref{transformations}).  The following example
+function removes optional domain part from its argument:
+
+@example
+@group
+(define (smap-xform handle arg . rest)
+  (let ((arg-parts (string-split arg #\@@)))
+    (if (null? (cdr arg-parts))
+	#f
+	(car arg-parts))))
+@end group
+@end example
+
+The following snippet from the @file{smapd.conf} file shows how to
+apply it:
+
+@example
+@group
+database localpart guile init-script=local.scm
+
+dispatch key like *@@* transform key localpart
+@end group
+@end example
+@end deffn
+
+@node mysql
+@section Mysql
+@cindex mysql module
+  The @command{mysql} module provides interface to MySQL database
+management system.  It may be used to build smap databases over SQL
+ones.
+
+  The SQL database to use may be configured either globally, when
+loading the module, or locally, when defining a smap database.  If
+a database definition lacks SQL configuration statements, then it
+attempts to use a globally defined connection.
+
+  Each database is configured with a @dfn{SQL query template}, and
+a set of @dfn{smap reply templates} to use.  When dispatched a
+sockmap query, the database expands the SQL query template using
+the actual values of @samp{$@{map@}} (the map name) and
+@samp{$@{key@}} (the key value) and sends the expanded query to the
+MySQL server.  If the server responds with a non-empty set of tuples,
+the @dfn{positive reply template} is expanded and the result is used
+as a response.  Otherwise, if the query produced an empty set, the
+smap database uses the @dfn{negative reply template} to create the
+response.
+
+@menu
+* MySQL Configuration::
+* MySQL Query and SMAP Replies::
+@end menu
+
+@node MySQL Configuration
+@subsection MySQL Configuration
+
+The SQL database is configured using the following options:
+
+@table @option
+@flindex /etc/my.cnf
+@kwindex config-file, @command{mysql}
+@item config-file=@var{file}
+  Set the name of the MySQL configuration file to read.  By default
+@file{/etc/my.cnf} is used.  
+
+@kwindex config-group, @command{mysql}
+@item config-group=@var{name}
+  Set the name of the group in the MySQL configuration file,
+from where to read the configuration options.
+@end table
+
+  The statements above allow to keep all security-sensitive
+information, such as MySQL username and password, in an
+external configuration file and thus to relax permission requirements
+for @file{smapd.conf}.  For a detailed description of the format of
+such external configuration file (or @dfn{option file} in @samp{MySQL}
+parlance), see
+@ifhtml
+@uref{http://dev.mysql.com/doc/refman/5.0/en/option-files.html,
+MySQL option files}.
+@end ifhtml
+@ifnothtml
+@ref{option-files, Using Option Files,,mysql,MySQL Manual}.
+@end ifnothtml
+
+  In case the use of option files is not feasible for some reason,
+you may specify MySQL connection and database parameters in
+@file{smapd.conf} when loading the @command{mysql} module or defining
+a smap database.  The following options are used to define MySQL
+connection parameters:
+
+@table @option
+@kwindex host, @command{mysql}
+@item host=@var{hostname}
+Sets the hostname or @acronym{IP} address of the host running the
+MySQL server.
+
+@kwindex port, @command{mysql}
+@item port=@var{n}
+Sets port number the MySQL server is listening on.  Default is 3306.
+
+@kwindex socket, @command{mysql}
+@item socket=@var{file}
+Sets the socket name, if the server is listening on a @acronym{UNIX} socket.
+
+@kwindex ssl-ca, @command{mysql}
+@item ssl-ca=@var{file}
+Sets the pathname to the certificate authority file, if you
+wish to use a secure connection to the server via SSL.
+@end table
+
+Notice, that either @option{host} and, optionally, @option{port} or
+@option{socket} must be used.  Specifying both is senseless.
+
+  MySQL database and user credentials are defined using the following
+options:
+  
+@table @option
+@kwindex database, @command{mysql}
+@item database=@var{name}
+Sets the name of the MySQL database to use.
+
+@kwindex user, @command{mysql}
+@item user=@var{name}
+Sets MySQL user name.
+
+@kwindex password, @command{mysql}
+@item password=@var{string}
+Sets the password for accessing the MySQL database.
+@end table
+
+When using these options, it is reasonable to tighten the permissions
+on @file{smapd.conf} so that no third person could see the MySQL
+password. The recommended permissions are @samp{0600}.  
+
+@node MySQL Query and SMAP Replies
+@subsection MySQL Query and SMAP Replies
+  MySQL query is defined using the following option:
+
+@table @option
+@kwindex query, @command{mysql}
+@item query=@var{template}
+  Define MySQL query template.
+@end table
+
+The @var{template} may reference the following variables:
+
+@float Table, mysql-query-vars
+@caption{MySQL query template variables}
+@multitable @columnfractions 0.3 0.6
+@headitem Variable @tab Meaning
+@kwindex map, @command{mysql}
+@item map @tab Name of the map being queried
+@kwindex key, @command{mysql}
+@item key @tab Lookup key
+@end multitable
+@end float
+
+  For example:
+
+@example
+@group
+database alias mysql \
+  query="SELECT alias FROM aliases WHERE email='$key'"
+@end group
+@end example
+
+  If the database definition lacks the @code{query} option,
+it will attempt to use one from the module statement.  If the module
+statement lacked it as well, an error is reported.
+
+  @dfn{Reply templates} define the responses to be given.  They are
+given by the following options:
+
+@table @option
+@kwindex positive-reply, @command{mysql}
+@item positive-reply=@var{template}
+Defines a reply to be sent if the query returned a non-empty set of
+tuples.  In addition to the variables described above
+(@pxref{mysql-query-vars}), the @var{template} may also refer to the
+MySQL result columns, by using their names from the @samp{SELECT} part
+of the query.  For example:
+
+@example
+@group
+database alias mysql \
+  query="SELECT alias FROM aliases WHERE email='$key'" \
+  positive-reply="OK $alias"
+@end group
+@end example
+
+The default @code{positive-reply} is @samp{OK}.
+
+@kwindex negative-reply, @command{mysql}
+@item negative-reply=@var{template}
+Defines a reply to be sent if the query returned an empty set of
+tuples.  The @var{template} may refer to the variables described in
+@ref{mysql-query-vars}.
+
+Default value is @samp{NOTFOUND}.
+
+@kwindex onerror-reply, @command{mysql}
+@item onerror-reply=@var{template}
+Defines a reply to be sent if an error occurred when executing the
+query.  The @var{template} may refer to the variables described in 
+@ref{mysql-query-vars}.
+
+Default value is @samp{NOTFOUND}.
+@end table
+
+@node postgres
+@section Postgres
+@cindex Postgres module
+    The @command{postgres} module provides interface to PostgreSQL database
+management system.  It may be used to build smap databases over SQL
+ones.
+
+    The module is in many regards similar to @command{mysql} module,
+described above.  In particular, its overall functionality is exactly
+the same as described in @ref{mysql}, except, of course, that it uses
+PostgreSQL databases.
+
+@menu
+* Postgres Configuration::
+* Postgres Query and SMAP Replies::
+@end menu
+
+@node Postgres Configuration
+@subsection Postgres Configuration
+  A Postgres database is configured using a set of options understood
+by the Postgres @code{PQconnectdb} function.  See 
+@uref{http://www.postgresql.org/@/docs/@/8.4/@/static/@/libpq-connect.html},
+for a detailed description.  The following is a short summary of the
+most useful options:
+
+@table @option
+@kwindex host, @command{postgres} option
+@item host=@var{name}
+Name of host to connect to.  If this begins with a slash,
+it specifies Unix-domain communication rather than TCP/IP
+communication; the value is the name of the directory in which the
+socket file is stored.
+
+@kwindex hostaddr, @command{postgres} option
+@item hostaddr=@var{ip}
+Numeric IP address of host to connect to.  
+
+@kwindex port, @command{postgres} option
+@item port=@var{number}
+Port number to connect to at the server host, or socket file name
+extension for Unix-domain connections.
+
+@kwindex dbname, @command{postgres} option
+@item dbname=@var{name}
+The database name. 
+
+@kwindex user, @command{postgres} option
+@item user=@var{name}
+PostgreSQL user name to connect as.  Defaults to be the same as the
+operating system name of the user running the @command{smapd}.
+
+@kwindex password, @command{postgres} option
+@item password=@var{string}
+Password to be used if the server demands password authentication.
+
+@kwindex connect_timeout, @command{postgres} option
+@item connect_timeout=@var{number}
+Maximum wait for connection, in seconds.  Zero or not specified means
+wait indefinitely.
+
+@kwindex options, @command{postgres} option
+@item options=@var{string}
+Any additional command-line options to send to the server at run-time.
+For example, setting this to @samp{-c geqo=off} sets the session's
+value of the @samp{geqo} parameter to @samp{off}.  For a detailed
+discussion of the available options, see Postgres
+documentation@footnote{For PostgreSQL version 8.4, see
+@uref{http://www.postgresql.org/docs/8.4/static/runtime-config.html,
+Chapter 18} in PostgreSQL Manual.}.
+
+@kwindex sslmode, @command{postgres} option
+@item sslmode=@var{mode}
+This option determines whether or with what priority an SSL TCP/IP
+connection will be negotiated with the server. There are six modes:
+@samp{disable}, @samp{allow}, @samp{prefer}, @samp{require},
+@samp{verify-ca} and @samp{verify-full}@footnote{For PostgreSQL
+version 8.4, see
+@uref{http://www.postgresql.org/docs/8.4/static/libpq-ssl.html,
+Section 30.17} in PostgreSQL Manual.}.
+
+@kwindex sslcert, @command{postgres} option
+@item sslcert=@var{file}
+This parameter specifies the file name of the client SSL certificate. 
+
+@kwindex sslkey, @command{postgres} option
+@item sslkey==@var{file-or-engine-name}
+This parameter specifies the location for the secret key used for the
+client certificate.
+
+@kwindex sslrootcert, @command{postgres} option
+@item sslrootcert=@var{file}
+This parameter specifies the file name of the root SSL certificate. 
+
+@kwindex sslcrl, @command{postgres} option
+@item sslcrl=@var{name}
+This parameter specifies the file name of the SSL certificate
+revocation list (@acronym{CRL}). 
+
+@kwindex krbsrvname, @command{postgres} option
+@item krbsrvname=@var{name}
+Kerberos service name to use when authenticating with Kerberos 5 or GSSAPI.
+
+@kwindex service, @command{postgres} option
+@item service=@var{name}
+Service name to use for additional parameters. 
+@end table
+
+@node Postgres Query and SMAP Replies
+@subsection Postgres Query and SMAP Replies
+  Postgres SQL query and the smap replies are configured the same way
+as for @command{mysql} module (@pxref{MySQL Query and SMAP Replies}).
+The following is a short summary:
+
+@table @option
+@kwindex query, @command{mysql}
+@item query=@var{template}
+  Define the Postgres query template.  The @var{template} may
+reference the following variables: 
+
+@float Table, postgres-query-vars
+@caption{Postgres query template variables}
+@multitable @columnfractions 0.3 0.6
+@headitem Variable @tab Meaning
+@kwindex map, @command{postgres}
+@item map @tab Name of the map being queried
+@kwindex key, @command{postgres}
+@item key @tab Lookup key
+@end multitable
+@end float
+
+  If the database definition lacks the @code{query} option,
+it will attempt to use one from the module statement.  If the module
+statement lacked it as well, an error is reported.
+
+@kwindex positive-reply, @command{mysql}
+@item positive-reply=@var{template}
+Defines a reply to be sent if the query returned a non-empty set of
+tuples.  In addition to the variables described above
+(@pxref{postgres-query-vars}), the @var{template} may also refer to the
+column names from the SQL result set.
+
+The default @code{positive-reply} is @samp{OK}.
+
+@kwindex negative-reply, @command{mysql}
+@item negative-reply=@var{template}
+Defines a reply to be sent if the query returned an empty set of
+tuples.  The @var{template} may refer to the variables described in
+@ref{postgres-query-vars}.
+
+Default value is @samp{NOTFOUND}.
+
+@kwindex onerror-reply, @command{mysql}
+@item onerror-reply=@var{template}
+Defines a reply to be sent if an error occurred when executing the
+query.  The @var{template} may refer to the variables described in 
+@ref{postgres-query-vars}.
+
+Default value is @samp{NOTFOUND}.
+@end table
+
+@node ldap
+@section ldap
+@cindex ldap module
+@cindex @acronym{LDAP}
+  The @command{ldap} module provides interface to the Lightweight
+Directory Access Protocol.  The configuration is similar to that
+of SQL modules:
+
+  @acronym{LDAP} parameters may be configured either globally, when
+loading the module, or locally, when defining a smap database.  If the
+database definition lacks some configuration statements, it looks them
+up in a global definition.
+
+  Each database has a @dfn{filter template} and up to three @dfn{smap
+reply templates}.  When dispatched a sockmap query, the database
+expands the filter template using the actual values of @samp{$@{map@}}
+(the map name) and @samp{$@{key@}} (the key value) and uses the
+obtained filter to query the @acronym{LDAP} server.  If the server
+responds with a non-empty set of tuples, the @dfn{positive reply
+template} is expanded and the result is used as a response.
+Otherwise, if the query produced an empty set, the smap database uses
+the @dfn{negative reply template} to create the response.
+
+@flindex /etc/ldap.conf
+  The module gets its configuration from the file
+@file{/etc/ldap.conf} and from module and database command line.  The 
+settings from the command line override those from
+@file{/etc/ldap.conf}.  Alternative configuration file can be
+specified using the @option{config-file} option.
+The subsections that follow discuss the keywords meaningful for the
+@command{ldap} module.  Unless explicitly stated otherwise, these can
+be used in the command line as well as in the configuration file.  For
+compatibility with other @acronym{LDAP} software, keywords in the
+configuration file are case-insensitive.  Unrecognized keywords
+appearing in the configuration file are silently ignored.  You can use
+the @samp{ldap.2} debug level to get a listing of those.  This can be
+useful to trace possible typos.
+
+Unrecognized keywords appearing in the command line are treated as
+errors, as usual.
+
+@kwindex config-file
+The only keyword that can be used only in the command line is
+@option{config-file}:
+
+@table @option
+@item config-file=@var{file}
+  Read configuration from file @var{file} instead of @file{/etc/ldap.conf}.
+@end table
+
+@menu
+* LDAP Configuration::
+* LDAP Filter and SMAP Replies::
+@end menu
+
+@node LDAP Configuration
+@subsection LDAP Configuration
+
+The following keywords configure access to the @acronym{LDAP} database:
+
+@table @option
+@kwindex base
+@item base=@var{string}
+  Sets the default base DN for ldap operations.  The base must be
+specified as a Distinguished Name in LDAP format.
+                              
+@kwindex binddn
+@item binddn=@var{dn}
+  The DN to bind as.
+  
+@kwindex bindpw
+@item bindpw=@var{password}
+  Password for @code{binddn}.
+  
+@kwindex bindpwfile
+@item bindpwfile=@var{file}
+  Read password from @var{file}.  This is a safer alternative to
+@option{bindpw}.  
+
+@kwindex tls-cacert
+@kwindex tls_cacert
+@item tls-cacert=@var{file}
+@itemx tls_cacert=@var{file}
+  Read TLS Certificate Authority from @var{file}.
+  
+@kwindex uri
+@item uri=@var{string}
+  Specifies the URI of LDAP server to connect to.  Multiple URIs are
+allowed.  Each URI is @samp{@var{scheme}://[@var{name}[:@var{port}]]}.
+The @var{scheme} part is one of: @samp{ldap}, meaning LDAP over TCP
+(default port 389), @samp{ldaps}, meaning LDAP over SSL (TLS) (default
+port 636), or @samp{ldapi}, meaning LDAP over UNIX socket.  For
+@samp{ldap} and @samp{ldaps}, @var{name} is the host name or IP
+address of the remote server.  Optional @var{port} specifies the TCP
+port to use instead of the default one.  For @samp{ldapi}, @var{name}
+is the pathname of the UNIX socket and @var{port} is not used.  Note,
+that directory separators must be URL-encoded (using @samp{%2F}
+instead of @samp{/}).  
+@end table
+
+@node LDAP Filter and SMAP Replies
+@subsection LDAP Filter and SMAP Replies
+
+The following keywords configure @acronym{LDAP} lookups and
+replies.
+
+@table @option
+@kwindex join-delim
+@item join-delim=@var{string}
+  When constructing a reply, join multiple occurrences of
+@acronym{LDAP} attribute with @var{string}.  If this parameter is not
+defined, only first attribute will be returned.
+
+@kwindex filter
+@item filter=@var{pattern}
+  Specifies @acronym{LDAP} filter.  The @var{pattern} can use the
+usual variables (@pxref{expansion}).  For example:
+
+@example
+database user ldap filter=(&(objectClass=posixAccount)(uid=$key))
+@end example
+
+There is no default for this option, so it is mandatory.
+@end table
+
+  Replies are configured via the following three keywords:
+
+@table @option
+@kwindex positive-reply
+@item positive-reply=@var{reply}
+  Defines a positive reply string.  It is used when the @acronym{LDAP}
+lookup using the defined filter returned one or more objects.  Only
+the first returned object is used.  The @var{reply} string can contain
+the basic @command{smap} variables @samp{$db}, @samp{$map}, and
+@samp{$key}.  It can also refer to values of any attribute from the
+returned object using the variable notation.  For example:
+
+@example
+positive-reply="OK $uid"
+@end example
+
+@noindent
+returns the string @samp{OK} followed by the value of the @option{uid}
+attribute.
+
+The default positive reply string is @samp{OK}.
+
+@kwindex negative-reply
+@item negative-reply=@var{reply}
+
+Defines the negative reply string, which is used when the
+@acronym{LDAP} lookup returns empy set of objects.  The @var{reply}
+string can contain the basic @command{smap} variables @samp{$db},
+@samp{$map}, and @samp{$key}.
+
+The default negative reply string is @samp{NOTFOUND}.
+
+@kwindex onerror-reply
+@item onerror-reply=@var{reply}
+Defines the string to be returned if the @acronym{LDAP} lookup fails.
+The @var{reply} argument can contain the basic @command{smap}
+variables @samp{$db}, @samp{$map}, and @samp{$key}.
+
+The default value is @samp{NOTFOUND}.
+@end table
+
+@node sed
+@section Sed
+@cindex sed module
+ The @samp{sed} module applies sed-like @dfn{s-expressions} to strings
+to modify them.  It is designed mainly for use in transformation rules
+(@pxref{transformations}).
+
+@menu
+* sed module::
+* sed database::
+* s-expressions::
+* sed lookups::
+@end menu
+
+@node sed module
+@subsection Loading sed module
+@cindex sed, loading the module
+@example
+module sed sed [@var{args}]
+@end example
+
+The following arguments may be given in the statement above:
+
+@table @option
+@item icase
+Use case-insensitive expressions.
+
+@item noicase
+Use case-sensitive expressions.  This is the default.
+
+@item extended
+Use extended regular expressions.  This is the default.
+
+@item noextended
+Use basic regular expressions.
+@end table
+
+Although @code{sed} module is designed for transformations in the
+first place, it may also be used as a conventional lookup database
+(@pxref{sed lookups}).  The following options modify its behavior in
+this mode:
+
+@table @option
+@kwindex positive-reply
+@item positive-reply=@var{str}
+Use @var{str} for positive replies.
+
+@kwindex negative-reply
+@item negative-reply=@var{str}
+Use @var{str} for negative replies.
+
+@kwindex onerror-reply
+@item onerror-reply=@var{str}
+Reply with @var{str} if an error occurred.
+@end table
+
+@node sed database
+@subsection Defining Sed Databases
+@cindex sed databases
+@cindex database, sed
+  The definition of a sed databases requires a single argument: the
+@dfn{s-expression} to be applied.  For example:
+
+@example
+database dequote sed 's/<(.*)>/\1/g'
+@end example
+
+  Be sure to properly quote the expression, especially if it contains
+backreferences.  It is preferable to use single quotes, to avoid
+duplicating each backslash in the expression, as shown in the example
+below.  If the expression itself contains single quote, you may either
+use double-quotes to quote the entire expression:
+
+@example
+database foo sed "s/'utf8'(.*)/u8_\\1/"
+@end example
+
+@noindent
+or use escaped single quotes outside of quoted expression (a technique
+familiar for shell programmers):
+
+@example
+database foo sed 's/'\''utf8'\''(.*)/u8_\1/'
+@end example
+
+  All options valid for module initialization (@pxref{sed module}) may
+also be used in database declarations.  When used so, they take
+precedence over module initialization options.  For example, the
+following database definition uses basic case-insensitive regular
+expressions:
+
+@example
+database bar sed noextended noicase 's/test(\([^)]\))/\1/g'
+@end example
+
+@node s-expressions
+@subsection S-expressions
+@cindex s-expression
+The transformation expression is a @command{sed}-like
+replace expression of the form:
+
+@smallexample
+s/@var{regexp}/@var{replace}/[@var{flags}]
+@end smallexample
+
+@noindent
+where @var{regexp} is a @dfn{regular expression}, @var{replace} is a
+replacement for each part of the input that matches @var{regexp}.  Both
+@var{regexp} and @var{replace} are described in detail in
+@ref{The "s" Command, The "s" Command, The `s' Command, sed, GNU sed}.
+
+As in @command{sed}, you can give several replace expressions,
+separated by a semicolon.
+
+Supported @var{flags} are:
+
+@table @samp
+@cindex g, @option{transform} flag
+@item g
+Apply the replacement to @emph{all} matches to the @var{regexp}, not
+just the first.
+
+@cindex i, @option{transform} flag
+@item i
+Use case-insensitive matching
+
+@cindex x, @option{transform} flag
+@item x
+@var{regexp} is an @dfn{extended regular expression} (@pxref{Extended
+regexps, Extended regular expressions, Extended regular expressions,
+sed, GNU sed}).
+
+@item @var{number}
+Only replace the @var{number}th match of the @var{regexp}.
+
+Note: the @acronym{POSIX} standard does not specify what should happen
+when you mix the @samp{g} and @var{number} modifiers.  The
+@command{sed} module follows the GNU @command{sed} implementation in
+this regard, so the interaction is defined to be: ignore matches
+before the @var{number}th, and then match and replace all matches from
+the @var{number}th on.
+@end table
+
+Any delimiter can be used in lieue of @samp{/}, the only requirement being
+that it be used consistently throughout the expression. For example,
+the following two expressions are equivalent:
+
+@smallexample
+@group
+s/one/two/
+s,one,two,
+@end group
+@end smallexample
+
+  Changing delimiters is often useful when the @var{regex} contains
+slashes.  For instance, it is more convenient to write @code{s,/,-,} than
+@code{s/\//-/}.
+
+@node sed lookups
+@subsection Using Sed for Lookups
+@cindex sed, using for lookups
+  The @command{sed} module is designed primarily for argument
+transformation.  Nevertheless, it may also be used to define simple
+look-up databases.  When used in a @code{database} clause of a
+dispatch rule, the module behaves as follows.  The s-expression is
+applied to the key.  If the result differs from the input key, the
+@samp{positive-reply} is returned.  It the result is the same as the
+input key, @samp{negative-reply} is returned.  If some error occurred,
+@samp{onerror-reply} is returned.  The reply strings may be
+supplied as arguments to the database definition or to the module
+loading statement.  The following variables are expanded within these
+strings:
+
+@table @samp
+@item map
+The map name.
+
+@item key
+The key value.
+
+@item xform
+Transformed key value.  This variable is not defined for
+@samp{onerror-reply}.
+@end table
+
+  Default replies are:
+
+@multitable @columnfractions 0.4 0.6
+@headitem Reply @tab Value
+@item positive-reply @tab @samp{OK $@{xform@}}
+@item negative-reply @tab @samp{NOTFOUND}
+@item onerror-reply  @tab @samp{NOTFOUND}
+@end multitable
+
+@node  smapc
+@chapter Socket map client
+@cindex smapc, socket client utility
+@cindex single query mode, @command{smapc}
+@cindex interactive mode, @command{smapc}
+@cindex mode, @command{smapc}
+  The @command{smapc} program is a console-based utility for querying
+socket map servers.  It has two operation modes.  In @dfn{single query
+mode}, the utility performs a query, displays its result and exits
+immediately.  In @dfn{interactive mode}, the utility
+enters a read-and-eval loop, in which it reads queries from the
+keyboard, runs them, and displays obtained results on the screen.
+
+@menu
+* Single Query Mode::
+* Interactive Mode::
+* Initialization File::
+* Smap Invocation::
+@end menu
+
+@node Single Query Mode
+@section Single Query Mode
+@cindex single query mode
+
+  The simplest way to use @command{smapc} utility is to invoke it with
+three arguments:
+
+@example
+smapc @var{url} @var{map} @var{key}
+@end example
+
+@table @var
+@item url
+The URL of the server to query (@pxref{smap url}).
+
+@item map
+The map name.
+
+@item key
+The lookup key.
+@end table
+
+For example:
+
+@example
+@group
+$ smapc unix:///var/run/smap/sockmap aliases root@@domain.com
+OK smith dmk <rev@@another.domain>
+@end group
+@end example
+
+You may simplify the invocation if you add the URL to your
+@dfn{initialization file}, i.e. to the file @command{smapc} reads at
+startup for its defaults.  This file resides in your home directory
+and is named @file{.smapc}.  Open this file with your favorite editor,
+and add the following line to it:
+
+@example
+open unix:///var/run/smap/sockmap
+@end example
+
+Now, when invoked with two arguments, @command{smapc} will use this
+URL by default:
+
+@example
+@group
+$ smapc unix:///var/run/smap/sockmap aliases root@@domain.com
+OK smith dmk <rev@@another.domain>
+@end group
+@end example
+
+@xref{Initialization File}, for a detailed description of this file.
+
+@node Interactive Mode
+@section Interactive Mode
+@cindex interactive mode
+@cindex readline
+  If insufficient number of arguments is given in the command line,
+@command{smapc} enters interactive mode.  In this mode it reads
+commands from the standard input, executes them and displays the
+results on the standard output.  If the standard input is connected to
+a terminal, the readline and history facilities are enabled
+(@pxref{Command Line Editing, , Command Line Editing, readline, GNU
+Readline Library}).
+
+  When in interactive mode, @command{smapc} displays its prompt and
+waits for you to enter a command.  The default prompt is the name
+of the program, enclosed in parentheses:
+
+@example
+(smapc) _
+@end example
+
+@cindex command prefix
+@cindex prefix, command
+  Depending on the first character, your input is recognized either as
+a @command{smapc} command, or as a query.  All @command{smapc}
+commands begin with a single punctuation character, called
+@dfn{command prefix}.  The default command prefix is a dot, but it can
+be changed using the @code{prefix} command (@pxref{Command Summary,
+prefix}).  The prefix is not a part of the command, it is merely a
+means by which @command{smapc} recognizes that it has been given a
+command.  So, when explaining commands below, we will refer to them by
+their name, without the prefix.
+
+@anchor{smapc-open}
+@kwindex open
+  The most important command is @samp{open}.  It takes a server URL as
+its argument and opens a connection to that server:
+
+@example
+(smapc) .open unix:///var/run/smap/sockmap
+@end example
+
+  Now, if you type two or more words (the first of them not starting
+with the command prefix), @command{smapc} builds a query using
+the first word as of them is used as a map name and the rest of them
+as a key.  It then sends the request to the server using the socket
+opened with the @code{open} command and displays the
+result on the standard output:
+
+@example
+@group
+(smapc) aliases root@@domain.com
+OK smith dmk <rev@@another.domain>
+@end group
+@end example
+
+If you wish to change to another URL, give another @samp{open}
+command.  Do not bother to close the previously opened socket: it will
+be done automatically.
+
+@cindex default map
+@anchor{smapc-defmap}
+@kwindex map
+If you are going to send a series of queries using the same map, you
+will save yourself some typing by declaring the @dfn{default map},
+e.g.:
+
+@example
+(smapc) .map aliases
+@end example
+
+From now on, every non-command input you give will be treated as lookup
+keys for that map name, e.g.:
+
+@example
+@group
+(smapc) root@@domain.com
+OK smith dmk <rev@@another.domain>
+(smapc) postmaster
+OK root
+(smapc) daemon
+NOTFOUND
+@end group
+@end example
+
+If you forget what map you are currently using, type the @var{map}
+command without arguments.  It will display the map name:
+
+@example
+@group
+(smapc) .map
+current map is aliases
+@end group
+@end example
+
+@kwindex nomap
+Finally, to forget the default map and return to typing map name
+before the key, use @samp{nomap}:
+
+@example
+(smapc) .nomap
+@end example
+
+@kwindex quit
+To quit the program, type @samp{.quit}.  Typing
+end-of-file character (@kbd{C-d}) has the same effect.
+
+To obtain a listing of available commands with a short description for
+each of them, type @samp{help} or @samp{?}.
+
+@menu
+* Command Summary::
+@end menu
+
+@node Command Summary
+@subsection Smapc Command Summary
+  This subsection lists all available @command{smapc}
+commands along with their short description and a reference to the
+part of this manual where they are described in detail.  The command
+names are given without prefix.
+
+@deffn {smapc} open url
+Open connection to socket map server at the given @var{url}.
+@xref{smapc-open}.
+@end deffn
+
+@deffn {smapc} close
+Close previously opened connection.
+@end deffn
+
+@deffn {smapc} server
+Show URL of the currently opened connection.
+@end deffn
+
+@deffn {smapc} help
+Display short command usage summary.
+@end deffn
+
+@deffn {smapc} map [name]
+Set the default map name.  Without arguments, print the name of the
+map currently in use.  @xref{smapc-defmap}.
+@end deffn
+
+@deffn {smapc} nomap
+Clear the default map name.  After this command, map names must be
+given explicitly with each query.  @xref{smapc-defmap, nomap}.
+@end deffn
+
+@anchor{smapc-source}
+@deffn {smapc} source [ip]
+With argument, sets the source address for outgoing queries.  Without
+argument, displays currently used source address.
+@end deffn
+
+@deffn {smapc} debug spec
+Sets the debug level.  @xref{debugging}, for a description of @var{spec}.
+@end deffn
+
+@deffn {smapc} prefix [char]
+If @var{char} is given, sets it as the command prefix.  If called
+without arguments, displays the currently selected command prefix.
+@end deffn
+
+@anchor{smapc-prompt}
+@deffn {smapc} prompt [string]
+Redefines the command prompt.  Without arguments, prints the current
+prompt.
+@end deffn
+
+@deffn {smapc} history
+Prints the history of recently issued commands.
+@end deffn
+
+@deffn {smapc} quit
+Quits interactive mode.
+@end deffn
+
+@anchor{smapc-quiet}
+@deffn {smapc} quiet bool
+  This command command toggles the display of @command{smapc}
+startup banner.  When started, @command{smapc} prints a short list
+of information useful for beginning users: the program version and
+warranty conditions and a command to get help, e.g.:
+
+@example
+@group
+smapc (smap) @value{VERSION}
+Copyright (C) 2010 Sergey Poznyakoff
+License GPLv3+: GNU GPL version 3 or later
+<http://gnu.org/licenses/gpl.html>
+This is free software: you are free to change and redistribute it.
+There is NO WARRANTY, to the extent permitted by law.
+
+Type ? for help summary
+
+(smapc) _
+@end group
+@end example
+
+ If you find this output superfluous and useless, you can suppress it
+by setting
+
+@smallexample
+quiet yes
+@end smallexample
+
+@noindent
+in your initialization file.
+@end deffn
+
+@deffn {smapc} version
+Displays the package name and version number.
+@end deffn
+
+@deffn {smapc} warranty
+Displays the copyright statement.
+@end deffn
+
+@node Initialization File
+@section Initialization File
+@cindex init file
+@cindex initialization file
+@findex .smapc
+  When you start @command{smapc}, it automatically executes commands from its
+@dfn{initialization file}, if such file exists.  This file is located
+in your home directory and called @file{.smapc}.
+
+  Initialization file contains a series of @command{smapc} commands, as
+described in @ref{Interactive Mode}, with the only difference that
+no command prefix is used by default.  The @samp{#} character
+introduces a comment: any characters from (and including) @samp{#} up
+to the newline character are ignored@footnote{The same holds true for
+interactive mode as well, but you will hardly need comments on a
+terminal.}.
+
+  Init files are useful to change the defaults for your @command{smapc}
+invocation.  Consider, for example, this init file:
+
+@example
+# Turn welcome banner off
+quiet yes
+# Open the default connection
+open inet://127.0.0.1:3145
+# Use `aliases' as a default map
+map aliases
+# Finally, set the custom command prefix
+prefix :
+@end example
+
+Notice, that if you wish to change your command prefix, it is
+preferable to do it as a last command in your init file, as shown in
+this example.  
+
+@node Smap Invocation
+@section Smap Invocation
+  The following table summarizes the options available for
+@command{smapc}.  For each option a description is given
+and a cross reference is provided to more in-depth explanation in the
+body of the manual.
+
+@table @option
+@smapcopidx{B, batch}
+@item -B
+@itemx --batch
+Enable batch mode.  This mode is optimized for reading input from
+files.  The startup banner is suppressed, editing capabilities and
+input history are disabled, and input prompt is not shown.  This
+mode is enabled automatically if @command{smapd} detects that its
+standard input is not connected to a terminal.
+
+@smapcopidx{p, prompt}
+@item -p @var{string}
+@itemx --prompt=@var{string}
+Change command prompt.  @xref{smapc-prompt}.
+
+@smapcopidx{Q, quiet}
+@item -Q
+@itemx --quiet
+Do not print the normal welcome banner.  @xref{smapc-quiet}.
+
+@smapcopidx{q, norc}
+@item -q
+@itemx --norc
+Do not read initialization file.  @xref{Initialization File}.
+
+@smapcopidx{S, server}
+@item -S @var{url}
+@itemx --server=@var{url}
+Connect to server at the given @var{url}.  @xref{smapc-open}.
+
+@smapcopidx{s, source}
+@item -s @var{addr}
+@itemx --source=@var{addr}
+Set source address.  @xref{smapc-source}.
+
+@smapcopidx{T, trace}
+@item -T
+@itemx --trace
+Enable query traces.  @xref{debugging, traces}.
+
+@smapcopidx{d, debug}
+@item -d @var{spec}
+@itemx -x @var{spec}
+@itemx --debug=@var{spec}
+Set debug verbosity level.  @xref{debugging, Debugging information},
+for a detailed description.  The @option{-x} alias is for
+compatibility with version 1.0 and will be removed in subsequent releases.
+
+@smapcopidx{h, help}
+@item -h
+@itemx --help
+Give a short summary of available command line options.
+
+@opindex --usage, --usage option, @command{smapc}
+@item --usage
+Display a list of available command line options.
+
+@smapcopidx{V, version}
+@item -V
+@itemx --version
+Print program version and exit.
+@end table
+
+@node Reporting Bugs
+@chapter How to Report a Bug
+
+  Email bug reports to @email{gray+smap@@gnu.org.ua}.  Please include a
+detailed description of the bug and information about the conditions
+under which it occurs, so we can reproduce it.  The minimal
+information needed is:
+
+@itemize @bullet
+@item Version of the package you are using.
+@item Compilation options used when configuring it.
+@item Run-time configuration (the @file{smapd.conf} file and command
+line options used).
+@item Conditions under which the bug appears.
+@end itemize
+
+@node MeTA1
+@appendix Example: Using @command{smapd} with MeTA1
+@include ex-meta1.texi
+
+@node Protocol
+@appendix The Sockmap Protocol
+@include sockmap.texi
+
+@node Debug Categories
+@appendix Debug Categories
+@include debugcat.texi
+
+@node Copying This Manual
+@appendix GNU Free Documentation License
+@include fdl.texi
+
+@node Concept Index
+@unnumbered Concept Index
+
+This is a general index of all issues discussed in this manual.
+
+@printindex cp
+
+@bye

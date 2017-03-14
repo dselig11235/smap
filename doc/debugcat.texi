@@ -1,0 +1,56 @@
+@c This file is part of the Smap manual.
+@c Copyright (C) 2010, 2014 Sergey Poznyakoff
+@c See file smap.texi for copying conditions.
+@c *******************************************************************
+The following table describes the debug categories available in the
+@command{smapd} server (@pxref{debugging}).  For each category, the
+table gives its symbolic name, ordinal number (in parentheses), and
+a short description.
+
+Particular modules may define their own debug categories.
+
+@table @asis
+@item smap (0)
+Man smap functionality.  Level @samp{1} includes some mild warnings,
+like, e.g. @samp{ignoring master privilege settings}.
+
+Level @samp{10} enables detailed protocol traces, which look like:
+
+@example
+C: 22:mailertable foobar.net,
+S: 19:OK local:foobar.net,
+@end example
+
+@item srvman (1)
+Server manager, i.e. routines responsible for spawning children
+processes, controlling their number and lifetime, etc.
+
+Level @samp{1} gives additional information about allowed connections
+and children exit codes.
+
+Level @samp{2} gives insight to the server manager life cycle.
+
+@item module (2)
+Module subsystem: shows what modules and with what arguments are
+loaded, etc.
+
+@item database (3)
+Databases and their functionality.
+
+@item query (4)
+Query dispatcher.
+
+@item conf (5)
+Configuration file parser.
+
+Level @samp{1} enables warnings about undefined variables.
+
+Level @samp{2} displays each logical line and the result of
+expanding and splitting it.
+
+Level @samp{100} enables wordsplitter debugging.  This means a
+@emph{lot} of cryptic output useful only to those who have a
+good knowledge of how the wordsplitter works.
+
+@end table
+

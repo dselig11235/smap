@@ -1,0 +1,1268 @@
+2015-06-20  Sergey Poznyakoff  <gray@gnu.org>
+
+	Version 2.0
+
+	Minor changes
+
+	* src/smapc.c (prompt): Don't use static string. Fixes coredump
+	on using "prompt" command.
+	(get_input_line) [!WITH_READLINE]: Print prompt.
+	(main): Initialize prompt.
+	* doc/Makefile.am (GENDOCS): Add html-specific configuration file.
+	* doc/Config: Renamed to doc/html.init
+	* modules/guile/guile.c (guile_call_proc): Use scm_c_catch
+
+2015-03-01  Sergey Poznyakoff  <gray@gnu.org>
+
+	Switch to Texinfo 5.0
+
+	* doc/Config: Rewrite.
+	* doc/Makefile.am: Use Makeinfo 5 instead of texi2htm
+	* doc/gendocs_template: Ps is not built
+	* imprimatur: Upgrade.
+
+2014-10-15  Sergey Poznyakoff  <gray@gnu.org.ua>
+
+	Bugfix.
+
+	* src/close-fds.c (close_fds_except): Use FD_SETSIZE instead
+	of getmaxfd
+
+2014-09-08  Sergey Poznyakoff  <gray@gnu.org.ua>
+
+	ldap: bugfix
+
+	* modules/ldap/ldap.c (getvar): Don't add extra delimiter at the
+	end of output.
+
+2014-09-05  Sergey Poznyakoff  <gray@gnu.org>
+
+	ldap: support for multiple attributes
+
+	* modules/ldap/ldap.c (ldap_conf)<joinstr>: New member.
+	(ldap_conf_free): Free joinstr.
+	(ldap_conf_cpy): Copy joinstr.
+	(make_options): New option join-delim
+	(getvar_data)<joinstr>: New member.
+	(getvar): Concatenate multiple values using joinstr as delimiter.
+	(send_reply): Last argument is struct ldap_db*. All uses changed.
+
+	* doc/smap.texi: Document join-delim.
+
+2014-09-01  Sergey Poznyakoff  <gray@gnu.org>
+
+	Bugfixes.
+
+	* configure.ac: Fix copy-paste error
+	* lib/wordsplit.c (wordsplit_varnames): Initialize count
+	* modules/ldap/ldap.c (ldap_conf)<protocol>: Change type to long
+	(parse_ldap_conf,mod_ldap_init_db): Fix arguments to smap_error
+	(make_options): Handle ldap_version
+	(parse_ldap_uri): Use wordsplit_ instead of mu_wordsplit_
+	(ldap_connect): Handle ldap_version setting.
+	Use ldap_unbind_ext instead of the deprecated ldap_unbind.
+	(mod_ldap_free_db,mod_ldap_close): Add missing return statements.
+	(mod_ldap_query): Additional debug output.
+	* src/cmdline.opt: Update copyright years.
+	* src/smapccmd.opt: Likewise.
+
+2014-08-28  Sergey Poznyakoff  <gray@gnu.org>
+
+	Fix typo
+
+2014-08-28  Sergey Poznyakoff  <gray@gnu.org.ua>
+
+	Update docs
+
+2014-08-26  Sergey Poznyakoff  <gray@gnu.org>
+
+	ldap: use /etc/ldap.conf by default
+
+	* NEWS: Update.
+	* doc/smap.texi: Document the LDAP module.
+	* modules/ldap/ldap.c (dfl_config_file): New static.
+	(make_options): New function.
+	(mod_ldap_init_db): Read settings from /etc/ldap.conf
+	(or a file specified with config-file option) first.
+	Then override them with the settings from the command
+	line.
+
+2014-08-24  Sergey Poznyakoff  <gray@gnu.org>
+
+	New module: ldap
+
+	* configure.ac: Detect LDAP. New option --with-ldap
+	* include/smap/parseopt.h (smap_option)<func>: Change signature.
+	(SMAP_DELIM_EQ,SMAP_DELIM_WS,SMAP_DELIM_MASK)
+	(SMAP_PARSE_SUCCESS,SMAP_PARSE_NOENT)
+	(SMAP_PARSE_INVAL): New defines.
+	(smap_parseline): New proto.
+
+	* include/smap/wordsplit.h (wordsplit)<ws_getvar>: Remove const
+	from the return value: the function should allocate memory.
+	(wordsplit_varnames): New proto.
+	* lib/wordsplit.c (ISVARBEG,ISVARCHR): New macros.
+	(wordsplit_varnames): New function
+	(expvar): ws_getvar allocates memory.
+
+	* lib/parseopt.c (find_opt): Take flags as additional argument.
+	Support case-insensitive comparison and whitespace delimiters.
+	(smap_parseline): New function.
+	(smap_parseopt): Rewrite using smap_parseline.
+
+	* modules/Makefile.am: Add ldap module.
+	* modules/ldap/Makefile.am: New file.
+	* modules/ldap/ldap.c: New file.
+
+	* modules/mysql/Makefile.am: Minor change.
+	* modules/mysql/mysql.c: Minor change.
+
+	* src/srvman.c (smap_server_new): Save url.
+
+2014-08-23  Sergey Poznyakoff  <gray@gnu.org>
+
+	Update build system: use AP_CPPFLAGS instead of INCLUDES and upgrade grecs
+
+	Update copyright years
+
+2013-01-17  Sergey Poznyakoff  <gray@gnu.org.ua>
+
+	Bugfix
+
+	* src/close-fds.c (close_fds_above): Fix out-of-range indexing.
+
+2012-07-03  Sergey Poznyakoff  <gray@gnu.org.ua>
+
+	Minor fix.
+
+2011-03-09  Sergey Poznyakoff  <gray@gnu.org.ua>
+
+	Bugfixes.
+
+	* modules/guile/Makefile.am (BUILT_SOURCES): Don't list guile.c
+	* modules/mailutils/mailutils.c (checksize): Rewrite as a wrapper
+	over an auxiliary function, to avoid memory leaks on errors.  Make
+	sure res->auth always has a meaningful value.
+
+	* NEWS, configure.ac: version 1.1.90
+
+2011-03-07  Sergey Poznyakoff  <gray@gnu.org.ua>
+
+	Sync with MU commit 4bcd5c9de0cb6ca85bcc3a35b1518739b939b009.
+
+	* modules/mailutils/mailutils.c (create_log_stream): Use new
+	config API.
+
+2010-12-29  Sergey Poznyakoff  <gray@gnu.org.ua>
+
+	Switch to Mailutils-3.
+
+	* modules/mailutils/mailutils.c (expand_reply_text): Fix memory
+	management error.
+	(smap_diag_printer,_smap_debug_printer): Remove.
+	(_smap_log_stream_create, create_log_stream): New functions.
+	(mod_mailutils_init): Create MU3 log stream.
+
+	wordsplit: sync with mailutils
+
+2010-07-03  Sergey Poznyakoff  <gray@gnu.org.ua>
+
+	Version 1.1
+
+2010-07-02  Sergey Poznyakoff  <gray@gnu.org.ua>
+
+	Fix the mess with format specifications.
+
+	Fix creation and installation of smapd.conf
+
+	Minor change.
+
+	* configure.ac: Reset status_postgres to no if not found.
+
+2010-06-30  Sergey Poznyakoff  <gray@gnu.org.ua>
+
+	Short equivalent for the --debug option is -d.
+
+	The -x alias is retained for backward compatibility.
+
+	Minor changes.
+
+	* modules/mysql/mysql.c: Use onerror-reply.
+	* modules/postgres/postgres.c: Likewise.
+
+	* doc/smap.texi: Document expansions, mysql and
+	postgres modules.
+
+	Bugfix.
+
+	* src/Makefile.am: Distribute getopt.m4
+
+	Improve SQL interface.
+
+	* modules/mysql/mysql.c: Always open database, if enough
+	data are given to do so. Remove spurious options defaultdb
+	and open.
+	* modules/postgres/postgres.c: Likewise.
+	* doc/ex-meta1.texi: Update.
+
+2010-06-29  Sergey Poznyakoff  <gray@gnu.org.ua>
+
+	Improve debugging features.
+
+	* include/smap/wordsplit.h: Rearrange WRDSF_ flags.
+	(WRDSF_WARNUNDEF): New flag.
+	(WRDSE_UNDEF): New error code.
+	* lib/wordsplit.c (expvar): Handle WRDSF_UNDEF and WRDSF_WARNUNDEF.
+	(wordsplit_perror, _wordsplit_errstr): Handle WRDSE_UNDEF.
+
+	* src/cfg.c (parse_config_loop): Level 1 enables WRDSF_WARNUNDEF.
+
+	* doc/debugcat.texi: Document level conf(5).
+
+	Configuration parser debugging.
+
+	* src/smapd.c (debug_init): New category "conf".
+	* src/smapd.h (DBG_CONF): New constant.
+	* src/cfg.c (parse_config_loop): Add debugging
+	output.
+	(smapd_ws_debug): New function.
+
+	* lib/wordsplit.c (wordsplit_len): Fix character case in
+	debug output.
+	(wordsplit_init): Consistency checking for WRDSF_SHOWDBG.
+	(wordsplit_dump_nodes, wordsplit_len): Debugging output
+	is triggered by WRDSF_SHOWDBG flag.
+	* include/smap/wordsplit.h (wordsplit): New member ws_debug.
+	(WRDSF_SHOWDBG): New flag.
+
+	Fix getopt.m4
+
+	* src/getopt.m4 (GETOPT): If long_index is not given, expect
+	no arguments and bail out if some are given.
+
+	Bugfix.
+
+	Implement user-defined variables in configs.
+
+	* src/cfg.c (asgn_p, asgn, find_env_var): New functions.
+	(parse_config_loop): Handle user-defined variable assignments and
+	expansions.
+	* modules/mailutils/mailutils.c: Use wordsplit instead of
+	the MU vartabs.
+	* doc/ex-meta1.texi: Rewrite.
+
+	Handle WRDSF_KEEPUNDEF flag in wordsplit.
+
+	* lib/wordsplit.c (expvar): Handle WRDSF_KEEPUNDEF flag.
+
+	Bugfix
+
+	* src/module.c (database_declare): Initialize db to 0 (db->openeb
+	was not initialized).
+
+2010-06-26  Sergey Poznyakoff  <gray@gnu.org.ua>
+
+	Minor change.
+
+	Improve help output.
+
+	* src/getopt.m4 (_getopt_mangle_option)
+	(_getopt_set_option, _getopt_get_option)
+	(_getopt_if_option_set, _getopt_option_switch)
+	(_getopt_if_option_val, _getopt_switch_option_val)
+	(_getopt_set_options): New macros.
+	(print_help): Improve output.
+	(version_etc_copyright): Change to a generic version
+	(print_version_only): Improve output. Use copyright_year
+	and copyright_holder variables.
+	[authors] (program_author): New global.
+	(print_version): Print the "written by" clause if authors are
+	defined.
+	(OPTIONS_BEGIN): Change argument ordering, introduce flags.
+
+	* src/smapccmd.opt (OPTIONS_BEGIN): Update declaration.
+	* src/cmdline.opt : Likewise.
+	* src/smapc.c (cmd_warranty): Use program_version.
+
+2010-06-25  Sergey Poznyakoff  <gray@gnu.org.ua>
+
+	Implement postgres module.
+
+	* configure.ac: New option --with-postgres.
+	Check for libpq.
+	(POSTGRES_COND): New condition.
+	(AC_CONFIG_FILES): Add modules/postgres/Makefile.
+	* modules/Makefile.am [POSTGRES_COND] (POSTGRES_DIR): New variable.
+	(SUBDIRS): Add $(POSTGRES_DIR).
+
+	* modules/postgres/Makefile.am: New file.
+	* modules/postgres/postgres.c: New file.
+
+	* NEWS: Update.
+	* doc/smap.texi: Update.
+
+2010-06-24  Sergey Poznyakoff  <gray@gnu.org.ua>
+
+	Minor improvement
+
+	* src/cmdline.opt: Separate options by groups
+
+	Minor fix
+
+	* src/Makefile.am: Add dependencies on getopt.m4
+
+	Improve help output.
+
+	* src/getopt.m4 (print_usage, print_help): Sort options prior
+	to displaying them.
+	(sort_opthelp, sort_options, optcmp)
+	(cmpidx_short, cmpidx_long): New functions.
+
+	Avoid unnecessary exports.
+
+	* modules/guile/guile.c: Provide static qualifiers where necessary.
+	* modules/mailutils/mailutils.c: Likewise.
+	* modules/mysql/mysql.c: Likewise.
+	* modules/sed/sed.c: Likewise.
+
+	Fix quote removal in wordsplit.
+
+	* include/smap/wordsplit.h (WRDSF_CESCAPES): New flag.
+	(wordsplit_unquote_char): Rename to
+	(wordsplit_quote_char): Rename to wordsplit_c_quote_char.
+	(wordsplit_quoted_length): Rename to wordsplit_c_quoted_length.
+	(wordsplit_quote_copy): Rename to wordsplit_c_quote_copy.
+	(wordsplit_unquote_copy): Rename to wordsplit_c_unquote_copy.
+	(wordsplit_sh_unquote_copy): New prototype.
+	* lib/wordsplit.c (wsnode_quoteremoval): New function.
+	(wsnode_coalesce): Only coalesce adjacent nodes, do not modify them.
+	(wordsplit_len): Introduce quote removal (actually, unescaping) pass.
+
+	Update the docs.
+
+	* doc/smap.texi: Document transformations and sed module. Provide
+	a placeholder for mysql documentation.
+	* doc/ex-meta1.texi: Update.
+
+	Fix variable expansion.
+
+	* include/smap/wordsplit.h (WRDSF_KEEPUNDEF): New flag.
+	* lib/wordsplit.c (expvar): Expand undefined variables
+	to an empty string or keep them intact if WRDSF_KEEPUNDEF
+	is set.
+	Correctly handle multiword expansions.
+	(node_expand_vars): Propagate _WSNF_JOIN and _WSNF_QUOTE
+	to expvar.
+
+2010-06-23  Sergey Poznyakoff  <gray@gnu.org.ua>
+
+	Escape arguments for SQL queries.
+
+	* modules/mysql/mysql.c (create_query_env): Produce two copies of
+	environment: escaped one, for use in SQL statements, and literal one
+	for use elsewhere.
+	(mod_query): Modify accordingly.
+	* lib/wordsplit.c (wordsplit_finish): Fix unquoting mechanism.
+	(expvar): Set _WSNF_NOEXPAND flags for nodes produced by expanded
+	variables.
+
+	* NEWS: Update
+
+2010-06-22  Sergey Poznyakoff  <gray@gnu.org.ua>
+
+	Provide a default MySQL database.
+
+	* modules/mysql/mysql.c (mysql_db): Rename to mod_mysql_db.
+	New fields: flags, refcnt.
+	(def_db): New static.
+	(moddb_handle, moddb_positive_reply)
+	(moddb_negative_reply, opendb, closedb)
+	(freedb): New functions.
+	(mod_init): More options.
+	(mod_init_db): New option defaultdb.
+	(mod_free_db): Use freedb
+	(mod_open): Use opendb.
+	(mod_close): Use closedb.
+	(do_query, do_positive_reply, flush_result)
+	(mod_query): Use moddb_* accessors to get pointers to
+	MYSQL structure, positive and negative replies.
+
+	Implement mysql module.
+
+	* acinclude.m4: New file.
+	* modules/mysql/Makefile.am: New file.
+	* modules/mysql/mysql.c: New file.
+
+	* configure.ac: Test for mysql.
+	* lib/wordsplit.c (expvar): Take additional argument, for
+	propagating node flags.
+	(node_expand_vars): Propagate _WSNF_JOIN flag from the original
+	node.
+	(wordsplit_unquote_copy): Remove special handling for \' and \".
+	* modules/Makefile.am [MYSQL_COND]: Set MYSQL_DIR
+	(SUBDIRS): Add $MYSQL_DIR
+	* modules/mailutils/mailutils.c: Move smap_debug_alloc to module
+	initialization function.
+	* modules/sed/sed.c (sed_init_db): Remove smap_debug_alloc.
+
+2010-06-21  Sergey Poznyakoff  <gray@gnu.org.ua>
+
+	Configurable replies for sed databases.
+
+	* modules/sed/sed.c (sed_init): Implement module init method.
+	(sed_init_db): Initialize replies to global ones.
+	(sed_reply): New function.
+	(sed_query): Select template depending on whether some
+	change has been made to the key.  Use sed_reply to output
+	the reply.
+
+	Implement WRDSF_NOSPLIT flag in wordsplit.
+
+	* include/smap/wordsplit.h (WRDSF_NOSPLIT): New flag.
+	* lib/wordsplit.c (wordsplit_len): If WRDSF_NOSPLIT is set,
+	treat entire input as if it were in double quotes.
+
+	Version 1.0.1
+
+	Allow to prepend entries to the load path.
+
+	* src/module.c (mod_load_path): Made it array of two elements.
+	(add_load_path): Second argument gives index to mod_load_path.
+	(flush_load_path): New static.
+	(smap_modules_init): First process prepended directories, then
+	SMAP_MODDIR, and then appended ones.
+	* src/smapd.c (cfg_load_path): Rename to cfg_append_load_path.
+	(cfg_prepend_load_path): New function.
+	(smap_kwtab): New keywords: prepend-load-path, append-load-path.
+	* src/smapd.h (PATH_PREPEND, PATH_APPEND): New constants.
+	(add_load_path): Take 2 arguments.
+	* src/smapd.cfin [LOCAL]: Prepend local dirs to the load path.
+
+	* doc/smap.texi: Document prepend-load-path/append-load-path.
+
+	New module: sed.
+
+	* modules/sed/Makefile.am: New file.
+	* modules/sed/transform.c: New file.
+	* modules/sed/transform.h: New file.
+	* modules/sed/sed.c: New file.
+
+	* configure.ac (AC_CONFIG_FILES): Add modules/sed/Makefile
+	* include/smap/module.h (smap_module)<smap_xform>: Rearrange
+	arguments. All uses changed.
+	* modules/Makefile.am (SUBDIRS): Add sed.
+	* src/module.c (_load_module): Fix v2 assertions.
+	* src/query.c (dispatch_query_pack): Change smap_xform
+	invocation.
+	Avoid freeing qp->storage entry before printing it.
+
+	* src/smapd.cfin: Add sample sed transformations.
+	* src/smapd.c (cfg_socket_mode): Remove unused argument.
+
+	Change transformation syntax and method calling convention.
+
+	* include/smap/module.h (smap_module)<smap_xform>: Change
+	signature.
+	* modules/guile/getpw.scm (smap-xform): Change signature.
+	* modules/guile/guile.c (guile_xform): Change signature.
+	* src/query.c: Change transform syntax. New syntax is:
+	"transform" "key"|"map" dbname.
+	* src/smapd.cfin [GUILE]: Add sample transform entries.
+
+	Implement argument transformations.
+
+	Argument transformations allow to change map and/or
+	key in the input query before actually processing it.
+	They are implemented at the module level, via additional
+	method in smap_module structure.
+
+	* include/smap/module.h (SMAP_MODULE_VERSION): Define to 2.
+	(SMAP_CAPA_DEFAULT): Change constant.
+	(SMAP_CAPA_XFORM): New define.
+	(smap_module)<smap_xform>: New member.
+
+	* src/module.c (_load_module): Fix consistency checking.
+	* src/query.c: New condition "key [op] value".
+	New target "transform dbname".
+	(query_cond_type): New constant query_cond_key.
+	(map_comparison): Rename to comparison. All uses changed.
+	(map_cond): Rename to comp_cond. All uses changed.
+	(dispatch_rule)<xform>: New member.
+	(query_tok)<T_TRANSFORM, T_KEY>: New tokens.
+	(query_kwtab): New keywords: key, transform.
+	(parse_dispatch_map): Rename to parse_dispatch_comp; change
+	signature. All uses changed.
+	(parse_subcond): Handle T_KEY token.
+	(parse_complex_dispatch): Handle T_KEY and T_TRANSFORM.
+	(rule_fixup): New function.
+	(link_dispatch_rules): Use rule_fixup.
+	(find_dispatch_rule): Second argument defines where to
+	start searching.
+	(dispatch_query): Handle transformations. Add checking of return
+	values.
+
+	* modules/guile/guile.c (guile_proc_ind)<xform_proc>: New index.
+	(guile_proc_name): New proc "xform".
+	(guile_init_db): Bail out if neither query nor xform is defined.
+	(guile_xform): New function.
+	(module): Add guile_xform.
+	* modules/guile/getpw.scm (smap-xform): Implement an example
+	transformation.
+	* modules/echo/echo.c (module): Update.
+	* modules/mailutils/mailutils.c: Likewise.
+
+	Implement variable expansion.
+
+	* include/smap/wordsplit.h (WRDSE_CBRACE): New error code.
+	* lib/wordsplit.c (wordsplit_init): Dont bail out on absense
+	of WRDSF_NOVAR.
+	(wsnode_insert): Bugfix.
+	(wordsplit_finish): Unquote is 1 by default.
+	(node_split_prefix, find_closing_cbrace)
+	(wordsplit_find_env, expvar, node_expand_vars)
+	(wordsplit_varexp): New functions.
+	(wordsplit_len): Implement variable expansion.
+	(_wordsplit_errstr, wordsplit_perror): Handle new error code.
+
+2010-06-20  Sergey Poznyakoff  <gray@gnu.org.ua>
+
+	Improve wordsplit, prepare for variable expansion.
+
+	* include/smap/wordsplit.h (wordsplit): New members
+	ws_env, ws_getvar, ws_head, ws_tail.
+	(WRDSF_ENV, WRDSF_GETVAR, WRDSF_DEBUG): New flags.
+	(WRDSE_USAGE): New error code.
+	* lib/wordsplit.c: Build intermediate parse tree.
+	(_ARGCV_WORD_SED_EXPR, _ARGCV_WORD_MASK): Remove.
+	(_wsplt_nomem): New function.
+	(wordsplit_init): Initialize ws_delim to " \t\n"
+	Initialize new structure members.
+	(alloc_space): Second argument gives requested number of
+	free slots.
+	(_WSNF_WORD, _WSNF_QUOTE, _WSNF_NOEXPAND)
+	(_WSNF_JOIN, _WSNF_SEXP): New constants.
+	(wordsplit_node): New structure.
+	(wsnode_flagstr, wsnode_ptr, wsnode_len)
+	(wsnode_new, wsnode_free, wsnode_append)
+	(wsnode_remove, wsnode_insert, wordsplit_add_segm)
+	(wordsplit_free_nodes, wordsplit_dump_nodes)
+	(coalesce_segment, wsnode_coalesce)
+	(wordsplit_finish): New functions.
+	(_WRDS_WORD, _WRDS_CONT): Remove constants.
+	(_WRDS_OK): New constant.
+	(scan_qstring): New function
+	(scan_word, wordsplit_len): Rewrite.
+	(wordsplit_perror, _worsplit_errstr): Handle WRDSE_USAGE.
+
+	Improve wordsplit.
+
+	* include/smap/wordsplit.h (wordsplit)<ws_errno>: New member.
+	(WRDSE_NOSUPP): New define.
+	(wordsplit_perror,wordsplit_strerror): New prototypes.
+	* lib/wordsplit.c (all functions): use wordsplit_perror
+	for diagnostics if WRDSF_SHOWERR is set; set ws_errno to
+	the actual error code before returning error.
+	(scan_word): Revise and fix return values.
+	(wordsplit_len): Correctly handle errors, in particular
+	WRDSE_QUOTE.
+	(wordsplit_perror, wordsplit_strerror): New functions.
+	* src/cfg.c (parse_config_loop): Use wordsplit_strerror
+	for diagnostics.
+	* src/module.c (smap_modules_init): Likewise.
+	* src/smapc.c (read_eval_loop): Use wordsplit_perror for
+	diagnostics.
+
+2010-06-19  Sergey Poznyakoff  <gray@gnu.org.ua>
+
+	Version 1.0
+
+	* configure.ac, NEWS: Version 1.0
+	* README: Update.
+	* README-alpha: New file.
+	* doc/smap.texi: Document the use of TCP wrappers.
+	* src/srvman.c (server_run): Use smap_progname as
+	daemon name for the global entries.
+
+	Bugfixes
+
+	* doc/macros.texi: New file.
+	* doc/Makefile.am (smap_TEXINFOS): Add macros.texi
+	* doc/Config: Override $image hanlder.
+	* doc/ex-meta1.texi: Add indexing commands.
+	* doc/gendocs_template: Fix copy-paste errors.
+	* doc/smap.texi: Add indexing commands.
+
+	* configure.ac, NEWS: Version 0.0.94
+
+	Improve and document smapc.
+
+	* src/smapc.c: New commands: version, warranty.
+	(smapc_cmd_tab): Fix "nomap" entry. Add new commands.
+	(cmd_help): Sort the output alphabetically.
+	(read_eval_loop): Get `interactive' as argument.
+	(main): Honor --batch setting.
+	* src/smapccmd.opt: New option --quiet.
+	* doc/smap.texi: Document smapc
+
+	Fix invocation of database initialization methods. Update server docs.
+
+	* include/smap/module.h (smap_module) <smap_init_db>: Change
+	signature: pass database name as the first argument.
+	* modules/echo/echo.c (echo_init_db): Update signature.
+	* modules/guile/getpw.scm (smap-open): Likewise.
+	* modules/guile/guile.c (_guile_database)<dbname>: new member.
+	(call_init_handler): Pass #f if dbname is NULL.
+	(guile_init_db): Initialize db->dbname; fix invocation of
+	init_fun.
+	* modules/mailutils/mailutils.c (_mu_smap_db)<id>: New member.
+	(_mu_smap_result)<db>: New member.
+	(expand_reply_text): Initialize "db" key to the name of
+	the database.
+	(_mu_auth_query, _mu_mbq_query): Set res.db
+	(mod_mailutils_init_db): Update signature.
+	Initialize db->id.
+
+	* doc/ex-meta1.texi: New file.
+	* doc/Makefile.am (smap_TEXINFOS): Add ex-meta1.texi.
+	* doc/smap.texi: Finish server documentation.
+
+	Implement mailutils `open' method.
+
+	It allows to have several mailutils-based databases using different
+	configuration files.
+
+	* modules/mailutils/mailutils.c (_mu_smap_db): New
+	members: config_file & config_flags.
+	(init_cfg_capa): New function.
+	(mod_mailutils_init): Use init_cfg_capa.
+	(mod_mailutils_init_db): New command line options
+	config-file, config-verbose, config-dump.
+	Set db->config_file and db->config_flags.
+	(mod_mailutils_open): New function.
+	(module): Register mod_mailutils_open.
+
+2010-06-18  Sergey Poznyakoff  <gray@gnu.org.ua>
+
+	Minor change
+
+	* src/smapd.c (smap_daemon): Emit "server starting" notice.
+
+	Improve handling of UNIX socket permissions and modes.
+
+	* src/smapd.c (expand_srv_groups): Take into account socket
+	ownership.
+	(parse_mode_string): New function.
+	(cfg_srv_chown, cfg_srv_socket_mode): New function.
+	(server_kwtab): New keywords socket-owner and socket-mode.
+	(cfg_socket_mode): New function.
+	(smap_kwtab): Remove socket-umask. Add socket-mode instead.
+	(main): Initialize srvman_param.socket_mode.
+	* src/srvman.c (smap_server): New members: uid, gid, mode.
+	(smap_server_new): Initialize new fields.
+	(smap_server_set_mode, smap_server_set_owner)
+	(smap_server_get_owner): New function.
+	(server_prep): Use file modes instead of umasks.
+	(smap_srvman_iterate_data): Change signature.
+	* src/srvman.h (srvman_param): Remove socket_mode, add socket_umask
+	instead.
+	(smap_server_set_owner, smap_server_get_owner)
+	(smap_server_set_mode): New functions.
+	(smap_srvman_iterate_data): Change signature.
+	* doc/smap.texi: Update.
+
+	Update the docs.
+
+	* doc/smap.texi: Document databases, the echo module, and
+	(partially) the mailutils module.
+
+	Improve Guile interface.
+
+	* modules/guile/getpw.scm (smap-open) Return a meaningful
+	value.
+	(smap-query): Take db handle as first argument.
+	* modules/guile/guile.c (guile_init_db): Initialize db->handle.
+	(guile_call_proc): Open indicates error by returning SCM_UNSPECIFIED.
+	(guile_close): Unprotect the handle even if no close procedure
+	was registered.
+	(guile_query): Pass database handle to the query function.
+	* src/smapd.cfin [LOCAL]: Provide settings for local tests.
+
+	Version 0.0.93
+
+	Update and spell-check the docs.
+
+	* doc/smap.texi: Update.
+	* doc/sockmap.texi: Update.
+
+	Bugfix.
+
+	* src/Makefile.am (CLEANFILES): Add smapd.conf
+
+	Fix Guile module loading.
+
+	* modules/guile/Makefile.am (AM_CPPFLAGS): Define ADDLOADPATH.
+	* modules/guile/getpw.scm: Add comment.
+	* modules/guile/guile.c (guile_init)[ADDLOADPATH]: Add it
+	ti the current load path.
+	* src/module.c (init_databases): Fix typo in diagnostic message.
+
+2010-06-17  Sergey Poznyakoff  <gray@gnu.org.ua>
+
+	Fix terminology.
+
+	Use "to dispatch a query" instead of "to route a query", to avoid
+	confusion with network routing.
+
+	* doc/smap.texi, doc/smapflow.txt, doc/smapflow.fig: Update.
+	* doc/smapflow.png, doc/smapflow.eps: Update.
+
+	* src/query.c: Reflect the above changes. Also, use "server" instead
+	of "to" in the name of a condition, and "database" instead of
+	"uses", in the target spec.
+	* src/smapd.c: Likewise.
+	* src/smapd.cfin: Likewise.
+	* src/smapd.h: Likewise.
+
+	Normalize package name spelling; remove trailing whitespace.
+
+	All sources affected.
+
+	Update.
+
+	* smapd.cfin: Add a copyright header.
+
+	Install a sample configuration file.
+
+	* src/smapd.cfin: New file.
+	* src/Makefile.am (EXTRA_DIST): Add smapd.conf
+	[MAILUTILS_COND]: Define DEF_MAILUTILS
+	[GUILE_COND]: Define DEF_GUILE
+	(.cfin.conf): New implicit rule.
+	(noinst_DATA): New variable.
+	(install-data-local): New rule.
+	* Makefile.am (distuninstallcheck_listfiles): New variable.
+	* src/.gitignore: Add smapd.conf
+
+	* modules/guile/getpw.scm: New file.
+	* modules/guile/Makefile.am (EXTRA_DIST, site_DATA): Add
+	getpw.scm.
+	* modules/guile/guile.c: Fix the use of set_load_path: it must
+	be called after Guile framework has been initialized.
+
+	Bugfix.
+
+	* src/cfg.c (ISWS, skipws): Remove macros.
+	(parse_config_loop): Rely on wordsplit to
+	detect empty lines.
+
+	Further work on the documentation.
+
+	* src/query.c (parse_regexp): New function.
+	(parse_query_map): Regular expressions must be
+	prefixed with `regexp'.
+	* doc/smap.texi: Update.
+
+	Update.
+
+	* doc/smap.texi: Update.
+	* src/smapd.c (smap_kwtab): Fix typo (inetd-mode).
+	(main): Set default socket umask and max_children.
+
+2010-06-16  Sergey Poznyakoff  <gray@gnu.org.ua>
+
+	Untabify doc/smapflow.txt
+
+	Improve docs.
+
+	* doc/Makefile.am (smap_TEXINFOS): Add debugcat.texi.
+	(EXTRA_DIST): Add smapflow.* files.
+	* doc/smapflow.txt: New file.
+	* doc/smapflow.fig: New file.
+	* doc/smapflow.png: New file.
+	* doc/smapflow.eps: New file.
+
+	* doc/smap.texi: Write some sections.
+	* doc/.gitignore: Add pdf and ps files.
+
+	* src/smapd.c (smap_daemon): Fix exit code.
+
+2010-06-15  Sergey Poznyakoff  <gray@gnu.org.ua>
+
+	Minor changes.
+
+	* configure.ac: Check for set.*[ug]id functions.
+	* src/smapd.c (idle_timeout): Default to 10 minutes.
+
+	Fix handling of very long queries/replies.
+
+	* lib/sockmapstr.c (smap_sockmap_stream_create2): Set
+	SMAP_STREAM_EXPBUF on input buffer.
+	* lib/stream.c (_force_flush_buffer): New static.
+	(_stream_flush_buffer): Handle expandable buffers for
+	line-buffered streams.
+
+2010-06-14  Sergey Poznyakoff  <gray@gnu.org.ua>
+
+	Minor fixes.
+
+	* lib/url.c, src/smapd.h: Include string.h
+
+2010-06-12  Sergey Poznyakoff  <gray@gnu.org.ua>
+
+	Add documentation framework.
+
+	* Makefile.am (SUBDIRS): Add doc.
+	* configure.ac (AC_CONFIG_FILES): Add doc/Makefile.
+
+	* doc/.gitignore: New file.
+	* doc/Config: New file.
+	* doc/Makefile.am: New file.
+	* doc/fdl.texi: New file.
+	* doc/mastermenu.el: New file.
+	* doc/smap.texi: New file.
+	* doc/sockmap.texi: New file.
+	* doc/untabify.el: New file.
+	* doc/gendocs_template: New file.
+
+	Improve protocol error diagnostics.
+
+	* lib/sockmapstr.c (report_invalid_prefix): New function.
+	(read_payload_length)
+	(_sockmap_input_stream_read): Use report_invalid_prefix.
+
+	Fix stream buffer reallocation.
+
+	* include/smap/streamdef.h (_smap_stream)<size_hint>: Remove.
+	* lib/sockmapstr.c (read_payload_length): Add debug prints.
+	(ISDIGIT): New macro.
+	(_sockmap_input_stream_read): Be robust on invalid inputs.
+	If more space is needed, set _SMAP_STR_MORESPC bit, store the
+	requested size in *pret, and return ERANGE.
+	* lib/stream.c (_stream_realloc_buffer): New static.
+	(_stream_fill_full_buffered): Change handling of the
+	_SMAP_STR_MORESPC flag. Use _stream_realloc_buffer.
+	(_stream_fill_line_buffered): Use _stream_realloc_buffer.
+
+2010-06-11  Sergey Poznyakoff  <gray@gnu.org.ua>
+
+	Minor fixes.
+
+	Allow to abridge the amount of trace information by the reply code prefix.
+
+	* include/smap/stream.h (SMAP_IOCTL_SET_ARGS): New opcode.
+	(smap_trace_stream_create): New proto.
+	* lib/Makefile.am (libsmap_la_SOURCES): Add tracestr.c
+	* lib/tracestr.c: New file.
+
+	* lib/stderr.c (smap_openlog_stderr): Use specialized trace stream
+	for smap_trace_str.
+	* lib/syslog.c (smap_openlog_syslog): Likewise.
+	* src/cmdline.opt: New option trace-pattern.
+	* src/log.c (add_trace_pattern): New function.
+	(smap_log_init): Set up trace prefix patterns if requested.
+	* src/smapd.c (smap_kwtab): New statement trace-pattern.
+	* include/smap/stream.h (add_trace_pattern): New proto.
+
+	* lib/sockmapstr.c (_sockmap_stream_done): Honor SMAP_STREAM_NO_CLOSE.
+
+	Bugfixes.
+
+	* src/smapc.c (user_file_name): Fix memory allocation error.
+	* lib/stream.c: Minor style fixes.
+
+	Version 0.0.92
+
+	* configure.ac, NEWS: Update.
+
+	Implement debugging in smapc.
+
+	* smapc.c: Implement debugging commands.
+	* smapccmd.opt: New option --debug (-x).
+	* smapd.c: Minor change.
+
+	Revamp stream support.
+
+	Use fully fledged I/O streams (based on my earlier implementation
+	for Mailutils and Dico). Construct a sockmap stream which allows
+	to do all interactions transparently as if it were a line-oriented
+	protocol. Update everything accordingly.
+
+	* include/smap/ostr.h: delete
+	* lib/ostr.c: delete
+	* lib/smapostr.c: delete
+
+	* include/smap/printf.h: New file.
+	* include/smap/stream.h: New file.
+	* include/smap/streamdef.h: New file.
+	* lib/asnprintf.c: New file.
+	* lib/asprintf.c: New file.
+	* lib/fileoutstr.c: New file.
+	* lib/sockmapstr.c: New file.
+	* lib/syslogstr.c: New file.
+	* lib/stream.c: New file.
+	* lib/stream_printf.c: New file.
+	* lib/stream_vprintf.c: New file.
+	* lib/vasnprintf.c: New file.
+	* lib/xscript.c: New file.
+
+	* include/smap/Makefile.am: Update.
+	* lib/Makefile.am: Update.
+	* include/smap/diag.h (smap_error_str)
+	(smap_debug_str, smap_trace_str): Change type.
+	* include/smap/module.h (smap_module)<smap_query>: Change type of
+	ostr.
+
+	* lib/debug.c: Rewrite for new stream subsystem.
+	* lib/diag.c: Likewise.
+	* lib/stderr.c: Likewise.
+	* lib/syslog.c: Likewise.
+	* modules/echo/echo.c: Likewise.
+	* modules/guile/guile.c: Likewise.
+	* modules/mailutils/mailutils.c: Likewise.
+	* src/query.c: Likewise.
+	* src/smapc.c: Likewise.
+	* src/smapd.c: Likewise.
+	* src/smapd.h: Likewise.
+
+2010-06-10  Sergey Poznyakoff  <gray@gnu.org.ua>
+
+	More bugfixes.
+
+	* src/smapc.c (read_eval_loop): Handle comments in main shell.
+	* src/smapd.c (smap_loop): Fix buffer reallocation.
+
+2010-06-09  Sergey Poznyakoff  <gray@gnu.org.ua>
+
+	Bugfixes.
+
+	* include/smap/url.h (SMAP_URLE_INVALID): New constant.
+	* lib/url.c (url_error_string): Add new string for SMAP_URLE_INVALID.
+	(split_connection): Return SMAP_URLE_INVALID on invalid URLs.
+	(smap_url_parse): Initialize proto, port and path to NULL.
+	* modules/mailutils/mailutils.c (checksize): Set res->auth.
+	(mod_mailutils_init): New options config-verbose and config-verbose.
+	Set mu_cfg_parser_verbose depending on the flags.
+	Collect gocs capabilities and call mu_libcfg_init.
+	* src/Makefile.am (INCLUDES): Add @LTDLINCL@.
+	* src/smapc.c (read_eval_loop): Handle comments.
+	* src/smapd.c (cfg_max_children, cfg_global_max_children): Bugfix.
+	(smap_kwtab): New keyword: trace.
+	* src/srvman.c: Use tcpwrappers only for AF_INET family.
+
+	Bugfix.
+
+	* src/smapd.c (smap_loop): Remove unnecessary key modification.
+
+2010-06-08  Sergey Poznyakoff  <gray@gnu.org.ua>
+
+	Version 0.0.91
+
+	Implement switching to non-privileged user accounts.
+
+	* src/Makefile.am (smapd_SOURCES): Add userprivs.c.
+	* src/userprivs.c: New file.
+	* src/cfg.c (read_line): return immediately on eof.
+	(parse_config_loop): Take user-defined data as additional
+	argument.
+	Handle KWT_EOF entries.
+	(parse_config): Take user-defined data as additional argument.
+	All uses updated.
+	* src/smapd.c (global_privs): New global.
+	(smap_session_server): Switch to non-privileged user, if so
+	requested.
+	(smap_daemon): Likewise.
+	(cfg_backlog, cfg_server_flag)
+	(cfg_reuseaddr, cfg_single_process)
+	(cfg_max_children, cfg_server): Rewrite.
+	(cfg_srv_user, cfg_srv_group)
+	(cfg_srv_allgroups): New functions;
+	(smap_kwtab): New keywords: user, group,
+	allroups.
+	* src/smapd.h (KWT_EOF): New constant.
+	(cfg_kw)<fun>: Take user-defined data as additional argument.
+	(parse_config): Change signature.
+	(parse_config_loop): New prototype.
+	(privinfo): New struct.
+	(get_user_groups, switch_to_privs)
+	(privinfo_set_user, privinfo_add_grpgid)
+	(privinfo_add_grpnam, privinfo_expand_user_groups): New protos.
+	* src/srvman.c (smap_server_get_data_ptr): New function.
+	(smap_server_set_max_children): Call smap_server_free instead
+	of server_remove.
+	(smap_srvman_iterate_data): New function.
+	* src/smapc.c (main): Bugfix.
+	* src/srvman.h (smap_server_get_data_ptr)
+	(smap_srvman_iterate_data): New protos.
+
+	Minor improvements.
+
+	* modules/mailutils/mailutils.c: Use smap_debug to output
+	debugging info.
+	(mod_mailutils_init_db): Initialize dbgid.
+	* src/smapc.c: Improve command line interface.
+	* src/smapccmd.opt: New option --server (-S).
+
+	smapc: improve interactive mode.
+
+	* src/smapc.c: Improve interactive mode. Read user rc file at
+	startup.
+	* src/smapccmd.opt: new option --norc.
+
+	Implement client program.
+
+	* configure.ac: Check for readline.
+
+	* include/smap/url.h: New file
+	* include/smap/Makefile.am (pkginclude_HEADERS): Add url.h
+	* include/smap/diag.h (smap_debug_np, smap_debug_sp)
+	(smtp_debug_locate_n, smtp_debug_locate)
+	(smap_debug_alloc_n, smap_debug_alloc)
+	(smap_debug_printf, smap_debug_set): New protos.
+	(smap_debug): New macro.
+	* include/smap/ostr.h (smap_mapstr_debug_idx): New extern.
+	(smap_map_ostream_create): New proto.
+	* include/smap/wordsplit.h: Include stddef.h.
+
+	* lib/debug.c: New file.
+	* lib/Makefile.am (libsmap_la_SOURCES): Add new files.
+	* src/smapostr.c: Move to lib.
+	* src/url.c: Move to lib. Fix error reporting.
+
+	* src/common.h: New file.
+	* src/smapc.c: New file.
+	* src/smapccmd.opt: New file.
+	* src/.gitignore: Update.
+	* src/Makefile.am (bin_PROGRAMS): Add smapc.
+	(smapd_SOURCES): Remove smapostr.c and url.c.
+	(noinst_HEADERS): Add common.h
+	(smapc_SOURCES, smapc_LDADD): New vars.
+	(BUILT_SOURCES, EXTRA_DIST): Update.
+	* src/cmdline.opt: Update.
+	* src/getopt.m4 (print_help): Output the "Mandatory or optional" stanza
+	only if some options actually take arguments.
+	* src/log.c (debug_level, debug_printf)
+	(debug_set): Remove.
+	* src/mem.c: Do not include smapd.h. This source is shared between two
+	applications.
+	* src/smapd.c: Minor changes.
+	* src/smapd.h: Move some stuff to common.h
+	* src/srvman.c (smap_server_new): Use smap_url_parse.
+
+	* modules/echo/echo.c (echo_init_db): Bugfix: skip module name.
+
+	Housekeeping.
+
+	* src/smap.c: Renamed to src/smapd.c
+	* src/smap.h: Renamed to src/smapd.h
+	* configure.ac: Rename smap.c to smapd.c
+	* src/Makefile.am: Rename daemon to smapd. Install
+	it in sbindir.
+	* src/log.c: Rewrite using new library functions.
+	* src/smapd.h (progname, set_program_name): Remove.
+	(close_fds_above, close_fds_except): New protos.
+
+	* src/getopt.m4: Change version output to:
+	progname (pkgname) pkgversion.
+
+	* src/cfg.c: Reflect the changes.
+	* src/close-fds.c: Likewise.
+	* src/mem.c: Likewise.
+	* src/module.c: Likewise.
+	* src/smapd.c: Likewise.
+	* src/smapostr.c: Likewise.
+	* src/srvman.c: Likewise.
+	* src/url.c: Likewise.
+
+	* lib/progname.c: New file.
+	* lib/stderr.c: New file.
+	* lib/syslog.c: New file.
+	* lib/Makefile.am (libsmap_la_SOURCES): Add new files.
+
+	* include/smap/diag.h (smap_progname): New extern.
+	(smap_set_program_name, smap_openlog_stderr)
+	(smap_openlog_syslog): New protos.
+
+	* src/kwtrans.c: Remove accidentally committed file.
+
+	Command line settings override config file ones.
+
+	* src/smap.c (optcache_int, optcache_str)
+	(optcache_new, optcache_flush): New functions.
+	(main): Call optcache_flush after parsing the config.
+	* src/cmdline.opt: Use optcache for most options.
+
+	Implement inetd mode.
+
+	* src/smap.c (smap_loop): New function.
+	(smap_session_server): Rewrite as a wrapper to the above.
+	(smap_inet_server): New function.
+	(smap_kwtab): New keyword inetd-mode.
+	(main): Call smap_inet_server or smap_daemon, depending
+	on inetd_mode settings.
+
+2010-06-07  Sergey Poznyakoff  <gray@gnu.org.ua>
+
+	Merge modules mbq and mu-auth into a single modules: mailutils.
+
+	* configure.ac: Remove --with-mbq & --with-mu-auth
+	(MBQ_COND, MU_AUTH_COND): Remove condition.
+	(MAILUTILS_COND): New condition.
+	(AC_CONFIG_FILES): Remove mbq/ and mu-auth/, add mailutils instead.
+	* modules/Makefile.am (SUBDIRS): Remove mbq and mu-auth, add mailutils.
+
+	* modules/mailutils/Makefile.am: New file.
+	* modules/mailutils/mailutils.c: New file.
+
+	* modules/mailutils/mbq/*: Remove.
+	* modules/mailutils/mu-auth/*: Remove.
+
+	* include/smap/ostr.h (smap_ostream_write): Buffer is const.
+	* lib/ostr.c: Likewise.
+	* modules/guile/guile.c: Add missing includes.
+
+	* src/smap.h (MAX_DEBUG_COUNT): Fix constant.
+
+	Improve module loading/unloading sequence. Implement `guile' module.
+
+	* include/smap/parseopt.h: New file.
+	* lib/parseopt.c: New file.
+	* lib/Makefile.am (libsmap_la_SOURCES): Add parseopt.c.
+
+	* src/cfg.c (cfg_cur_line): New variable.
+	(read_line,parse_config): cfg_line keeps number of the line where the
+	current statement started. cfg_cur_line keeps the actual line number.
+	* src/module.c (smap_modules_unload): New function.
+	(link_databases): Merge into init_databases.
+	(init_databases): New function.
+	(close_databases): New function.
+	(free_databases: New function.
+	* src/query.c (route_query): Rewrite initialization sequence.
+	(match_map,match_cond): Minor fixes.
+	* src/smap.c (smap_session_server): Close databases before returning.
+	(smap_daemon): Return to caller, instead of exiting.
+	(main): Rewrite initialization sequence.
+	* src/smap.h: Include time.h
+	(DBG_DATABASE): New constant.
+	(smap_database_instance)<opened>: New member.
+	(link_databases): Remove proto.
+	(init_databases, free_databases, close_databases): New prototypes.
+
+	* gint: New module.
+	* Makefile.am (SUBDIRS): Add gint
+	(ACLOCAL_AMFLAGS): Likewise.
+	* bootstrap: Initialize submodules.
+	* configure.ac: Initialize GINT
+	* modules/Makefile.am (SUBDIRS): Add guile (conditionally)
+	* modules/guile/Makefile.am: New file.
+	* modules/guile/guile.c: New file.
+
+	* include/smap/Makefile.am (smap_module) <smap_open>
+	<smap_close>: New methods.
+	* modules/echo/echo.c: Update module interfaces. Add missing includes.
+	* modules/mbq/mbq.c: Likewise.
+	* modules/mu-auth/mu-auth.c: Likewise.
+
+	* lib/ostr.c: Add missing includes.
+	* lib/wordsplit.c: Likewise.
+	* src/srvman.c: Minor fixes.
+	* src/url.c: Likewise.
+
+	Improve passing connection information to modules. Implement mu-auth module.
+
+	* NEWS: Update.
+	* configure.ac: New option --enable-mu-auth
+	* include/smap/module.h (smap_conninfo): New struct.
+	(smap_module)<smap_query>: Replace last 4 argumenst by
+	struct smap_conninfo const *.
+
+	* modules/echo/echo.c (echo_query): Update declaration.
+	* modules/mbq/mbq.c (mbq_query): Update declaration.
+	(cfg_param): Implement `onerror' configuration statement.
+	* src/Makefile.am (EXTRA_DIST): Add cmdline.c
+	* src/log.c (debug_set): Fix return statement.
+	* src/query.c (query_pack): Replace sa,salen by conninfo.
+	(match_cond): Update.
+	(route_query): Take struct smap_conninfo * as 2nd argument.
+	* src/smap.c (smap_session_server): Pass smap_conninfo * to
+	route_query.
+	* src/smap.h (route_query): New proto.
+	* src/srvman.c (smap_srvman_get_sockaddr): New function.
+	* src/srvman.h (smap_srvman_get_sockaddr): New proto.
+
+	* modules/Makefile.am (SUBDIRS): Add mu-auth (conditionally).
+	* modules/mu-auth/Makefile.am: New file.
+	* modules/mu-auth/mu-auth.c: New file.
+
+	Implement new module (mailbox quota).
+
+	* configure.ac: Check for mailutils.
+	New option --enable-mbq
+	Print feature summary at the end of the run.
+	(MBQ_COND): New condition.
+	* modules/Makefile.am (SUBDIRS): Add mbq (conditionally).
+
+	* modules/mbq/Makefile.am: New file.
+	* modules/mbq/mbq.c: New file.
+
+	Implement loadable modules. Add `echo' module.
+
+	* include/Makefile.am: New file.
+	* include/smap/Makefile.am: New file.
+	* include/smap/module.h: New file.
+	* lib/Makefile.am: New file.
+	* src/module.c: New file.
+	* src/query.c: New file.
+
+	* include/smap: New directory.
+	* src/kwtab.h: Move to include/smap.
+	* src/diag.h: Likewise.
+	* src/ostr.h: Likewise.
+	* src/wordsplit.h: Likewise.
+
+	* lib: New directory.
+	* src/kwtab.c: Move to lib
+	* src/ostr.c: Likewise.
+	* src/wordsplit.c: Likewise.
+	* lib/diag.c: New file.
+
+	* Makefile.am (SUBDIRS): Add include and lib
+	* configure.ac: Update.
+	* src/Makefile.am: Move installable headers to include/smap,
+	libraries to lib.
+	(smap_SOURCES): Add module.c, url.c, query.c.
+	(AM_CPPFLAGS): Define SMAP_MODDIR.
+	* src/log.c (smap_error_str, smap_debug_str)
+	(smap_trace_str): Move to lib/diag.c
+	(smap_verror, smap_error): Likewise.
+	* src/smap.c (smap_kwtab): Add new keywords.
+	(main): Initialize module subsystem.
+	* src/smap.h: Update.
+
+	* modules/Makefile.am: New file.
+	* modules/echo/Makefile.am: New file.
+	* modules/echo/echo.c: New file.
+
+2010-06-06  Sergey Poznyakoff  <gray@gnu.org.ua>
+
+	Minor improvements.
+
+	* src/log.c (log_to_stderr): Initialize to -1
+	(smap_log_init): Initialize log_tag no matter what the
+	value of log_to_stderr is.
+	* src/smap.c (smap_timeout): Rename to idle_timeout.
+	(smap_daemon): Print terminating newline to the pidfile.
+	Always remove pidfile before exiting or restarting.
+	(smap_kwtab)<idle-timeout>: New keyword.
+	(main): Unless log_to_stderr was explicitly set, set it
+	to the same value as `foreground'.
+	* src/smapostr.c (map_flush): Improve debugging output.
+
+2010-06-05  Sergey Poznyakoff  <gray@gnu.org.ua>
+
+	Initial commit
+
+Local Variables:
+mode: change-log
+version-control: never
+buffer-read-only: t
+End:

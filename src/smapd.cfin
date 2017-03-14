@@ -1,0 +1,208 @@
+dnl This file is part of SMAP.             -*- m4 -*
+dnl Copyright (C) 2010, 2014 Sergey Poznyakoff
+dnl
+dnl Smap is free software; you can redistribute it and/or modify
+dnl it under the terms of the GNU General Public License as published by
+dnl the Free Software Foundation; either version 3, or (at your option)
+dnl any later version.
+dnl
+dnl Smap is distributed in the hope that it will be useful,
+dnl but WITHOUT ANY WARRANTY; without even the implied warranty of
+dnl MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+dnl GNU General Public License for more details.
+dnl
+dnl You should have received a copy of the GNU General Public License
+dnl along with Smap.  If not, see <http://www.gnu.org/licenses/>.
+dnl
+########################################################################
+# A sample configuration file for smapd.
+# Please, tailor to your needs.
+# Run `info smap' for a detailed description
+########################################################################
+
+########################################################################
+# General setup
+########################################################################
+
+## Save PID to the specified file
+pidfile /var/run/smapd.pid
+
+## Set syslog facility
+#log-facility daemon
+
+## Set syslog tag
+#log-tag smapd
+
+## Limit number of child processes running simultaneously
+#max-children 128
+
+## Child process exits if it does not receive any requests within this
+## time (seconds).
+#idle-timeout 600
+
+########################################################################
+# Tracing and debugging
+########################################################################
+
+## Enable query traces.
+## Query traces show each request along with the reply smapd sent for it.
+## For example:
+##
+##        user bar => NOTFOUND
+##        access connect:111.67.206.187 => OK REJECT
+##
+trace yes
+
+## Trace-patterns allow to limit query traces to such queries that
+## have been sent a given subset of replies.  For example, the statement
+## below shows only those traces that are sent the OK reply:
+trace-pattern OK
+
+## Debug levels.  Hopefully, you will seldom need these.
+#debug smap.1
+
+########################################################################
+# Declare servers
+#
+# Servers listen on sockets and dispatch incoming connections to child
+# processes.
+########################################################################
+
+## Configure two unprivileged servers.  They run with the privileges
+## of user `mail'.
+
+## The `local' server listens on a UNIX socket.
+server local unix:///tmp/smap begin
+ user mail
+end
+
+## The `loopback' server listens on the loopback interface.
+server loopback inet://127.0.0.1:3145 begin
+ user mail
+end
+
+ifdef(`MAILUTILS',`dnl
+# The `privileged' server runs with root privileges.  It is used 
+# for `mailbox quota' database (see below).
+server privileged inet://127.0.0.1:3146
+')
+########################################################################
+# Load modules
+#
+# The syntax is:
+#      module MODNAME FILENAME [ARGS...]
+# where:
+#      MODNAME  is a unique identifier which is used to refer to this
+#               module from other statements;
+#      FILENAME module file name, without suffix;
+#      ARGS     arbitrary arguments, passed to the module initialization
+#               function.
+########################################################################
+ifdef(`LOCAL',`dnl
+prepend-load-path ../modules/echo
+prepend-load-path ../modules/sed
+ifdef(`MAILUTILS',`prepend-load-path ../modules/mailutils
+')dnl
+ifdef(`GUILE',`prepend-load-path ../modules/guile
+')')dnl
+## These are the modules shipped with smap.
+
+## `echo' sends back the supplied arguments as a reply
+module echo echo
+## `sed' transforms argument using sed expressions.
+module sed sed
+ifdef(`MAILUTILS',`dnl
+## `mailutils' is an interface to GNU Mailutils capabilities.
+## It allows to verify user accounts, and their mailbox sizes and quotas.
+module mailutils mailutils')
+ifdef(`GUILE',`dnl
+## Use this module to load modules written in Guile.
+module guile guile`'ifdef(`LOCAL',` load-path=../modules/guile')')`'dnl
+
+########################################################################
+# Define databases
+########################################################################
+
+## Default database is used when an unexisting or unhandled map name is
+## requested.
+## It uses the `echo' module to send back the string supplied in its
+## arguments.
+##
+database default echo NOTFOUND [no such map]
+
+## `Dequote' remove email quotes surrounding its argument
+database dequote sed extended 's/<(.*)>/\1/g'
+
+ifdef(`MAILUTILS',`dnl
+## This database gets a user name as its argument.  If such user is found,
+## the database replies with `OK' followed by UID and GID of the user.
+## Otherwise it replies NOTFOUND.
+## Users are looked up using Mailutils authentication mechanism.
+##
+database auth mailutils mode=auth positive-reply="OK ${uid} ${gid}"
+
+## Use `mbq' database to verify whether a user mailbox has grown beyond
+## the allowed quota.
+##
+## The key is the user name, optionally followed by the size of the message
+## that is about to be delivered.
+## Reply is OK if the mailbox size is below quota (and, if size is given, is
+## able to accomodate that many bytes).
+## Otherwise, NOTFOUND is returned.  The first argument after NOTFOUND is
+## the diagnostic string (in square brackets), which may be returned to the
+## user.  If the mailbox is too big or cannot accomodate a message of the
+## requested size, the diagnostics string is followed by full mailbox name,
+## its actual size, and quota.
+##
+database mbq mailutils mode=mbq \
+  positive-reply="OK [${diag}] ${mailbox} ${mbsize} ${quota}"\
+  negative-reply="NOTFOUND [${diag}] ${mailbox} ${mbsize} ${quota}"\
+  onerror-reply="NOTFOUND [${diag}]"
+')
+ifdef(`GUILE',`dnl
+database getpw guile init-script=getpw.scm')
+  
+########################################################################
+# Dispatch queries
+#
+# Queries may be dispatched to various databases depending on a number
+# of conditions, such as the requested map, the originator of the query
+# and the id of the smapd server that received this query.
+#
+# Dispatching rules are processed from top down.  The first matching rule
+# applies.  If a request matches no rule, it is sent the default "NOTFOUND"
+# reply.
+#
+
+## Remove eventual angle quotes:
+dispatch key like <*> transform key dequote
+
+ifdef(`MAILUTILS',`dnl
+## Queries sent to the privileged server are handled by `mbq' or `auth'
+## databases, depending on the requested map name:
+##
+dispatch map mbq server privileged database mbq
+dispatch map getpwnam server privileged database auth
+## If the map name is neither `mbq' nor `getpwnam', use the default
+## database.
+dispatch server privileged database default')
+
+ifdef(`GUILE',`dnl
+dispatch server local key like *@* transform key getpw
+dispatch server loopback key like *@* transform key getpw
+dispatch server local database getpw
+dispatch server loopback database getpw
+')
+## A catch-all rule for queries matching none of the above.
+dispatch default database default
+
+########################################################################
+## End of smapd.conf
+########################################################################
+  
+
+
+
+
+
+

@@ -1,0 +1,93 @@
+@c This file is part of the Smap manual.
+@c Copyright (C) 2010, 2014 Sergey Poznyakoff
+@c See file smap.texi for copying conditions.
+@c *******************************************************************
+@cindex socket map protocol
+Sockmap is a simple request/reply protocol over TCP or UNIX
+domain sockets.  Both requests and replies are encoded in the
+following manner:
+
+@smallexample
+ @var{len}:@var{text},
+@end smallexample
+
+where @var{text} is the actual payload, and @var{len} is its length in
+bytes, as a decimal number in ASCII representation.  The colon
+and comma are transmitted verbatim.  For example, if @var{text} is
+the string @samp{hello there}, then the socket map packet for transmitting
+it is:
+
+@smallexample
+11:hello there,
+@end smallexample
+  
+Sockmap requests consist of the @dfn{map name} and the actual lookup
+key, separated by a single space character.
+
+Replies consist of the @dfn{status code} and optional data, separated
+by a single space character.
+
+Below we describe status codes implemented by various programs. The
+bracketed parts in the @samp{code} field of the tables below indicate
+optional values. The brackets themselves are not required by the protocol.
+
+@menu
+* Sendmail Status Codes::
+* MeTA1 Status Codes::
+* Mailfromd Status Codes::
+@end menu
+
+@node Sendmail Status Codes
+@appendixsec Sendmail Status Codes
+
+Status codes understood by Sendmail are:
+
+@float Table, sendmail-status-codes
+@caption{Sendmail Status Codes}
+@multitable @columnfractions 0.3 0.7
+@headitem Code @tab Meaning
+@item OK [@var{result}] @tab the key was found; @var{result} contains the
+looked up value.
+@item NOTFOUND @tab the key was not found
+@item TEMP [@var{reason}] @tab a temporary failure occurred; optional
+@var{reason} field contains an explanatory message.
+@item TIMEOUT [@var{reason}] @tab same as @samp{TEMP}.
+@item PERM @tab a permanent failure occurred
+@end multitable
+@end float
+
+@node MeTA1 Status Codes
+@appendixsec MeTA1 Status Codes
+
+MeTA1 further extends the protocol. The result codes it understands are:
+
+@float Table, meta1-status-codes
+@caption{MeTA1 Status Codes}
+@multitable @columnfractions 0.3 0.7
+@headitem Code @tab Meaning
+@item OK [@var{result}] @tab the key was found; @var{result} contains the
+looked up value.
+@item NOTFOUND @tab the key was not found
+@item NOMORE @tab the key was not found, stop further search
+@item TEMP [@var{reason}] @tab a temporary failure occurred; optional
+@var{reason} field contains an explanatory message.
+@item TIMEOUT [@var{reason}] @tab same as @samp{TEMP}.
+@item PERM [@var{reason}] @tab a permanent failure occurred; optional
+@var{reason} field contains an explanatory message.
+@end multitable
+@end float
+
+The @samp{NOMORE} status indicates that the key has not been found and also
+instructs @acronym{MTA}@footnote{To be precise, the @command{smar}, a
+component responsible for resolving various things for MeTA1.} to stop
+any further searches using this key and its derivatives.
+
+@node Mailfromd Status Codes
+@appendixsec Mailfromd Status Codes
+
+  Mailfromd does not itself require any particular status codes. The
+allowed status codes depend entirely on your filter program.
+
+  
+
+      

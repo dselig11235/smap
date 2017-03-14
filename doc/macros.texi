@@ -1,0 +1,13 @@
+@c This file is part of the Smap manual.
+@c Copyright (C) 2010, 2014 Sergey Poznyakoff
+@c See file smap.texi for copying conditions.
+@c *******************************************************************
+@macro smapdopidx{long,short}
+@opindex \short\, -\short\ option, @command{smapd}
+@opindex \long\, --\long\ option, @command{smapd}
+@end macro
+
+@macro smapcopidx{long,short}
+@opindex \short\, -\short\ option, @command{smapc}
+@opindex \long\, --\long\ option, @command{smapc}
+@end macro

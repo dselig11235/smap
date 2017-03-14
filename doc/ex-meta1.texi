@@ -1,0 +1,169 @@
+@c This file is part of the Smap manual.
+@c Copyright (C) 2010, 2014 Sergey Poznyakoff
+@c See file smap.texi for copying conditions.
+@c *******************************************************************
+@cindex MeTA1
+  In this appendix we will show how to use the @samp{mysql}
+module (@pxref{mysql,mysql module}) to configure local user
+and alias maps for @acronym{MeTA1}.  For this purpose, we will assume
+that the actual data is stored in two tables in a @acronym{MySQL}
+database.  The two maps will be served by two separate databases, each
+of which uses a separate configuration file.
+
+  To reduce the number of connections to the @acronym{MySQL} server,
+the @acronym{MySQL} database will be opened at the module level and
+shared between the two smap databases.  Thus, the module
+initialization in @file{smapd.conf} looks like:
+
+@example
+module mysql mysql config-group=smap
+@end example
+
+The @samp{config-group} parameter refers to a group name in the
+default @file{/etc/my.cnf} file that contains information about the
+@acronym{MySQL} database and credentials for accessing it.
+The following is a sample snippet from @file{/etc/my.cnf}:
+
+@example
+[smap]
+database   = Mail
+user       = smap
+password   = guessme
+socket     = /tmp/mysql.sock
+@end example
+
+@menu
+* userdb-meta1::  Configure local_user_map.
+* aliases-meta1:: Configure aliases.
+* smapd-meta1::   Smapd configuration.
+* conf-meta1::    Configure MeTA1.
+@end menu
+
+@node userdb-meta1
+@appendixsec Configure local_user_map.
+
+Let's configure @samp{local_user_map} first.  User data will be
+stored in the table @samp{userdb}, which has the following structure:
+
+@example
+@group
+CREATE TABLE userdb (
+  user varchar(32) NOT NULL default '',
+  mailbox text
+  PRIMARY KEY (user)
+);
+@end group
+@end example
+
+The smap database is defined as follows:
+
+@example
+@group
+database userdb mysql \
+    query="SELECT user FROM userdb WHERE user='$key'"
+    positive-reply=OK
+@end group
+@end example
+
+The @samp{defaultdb} parameter tells it to use the default SQL
+database opened in the module initialization instruction.  The
+@samp{query} parameter supplies the SQL query to run (the
+@samp{$@{key@}} variable will be expanded to the value of the actual
+lookup key, prior to executing the query).  Finally,
+@samp{positive-reply} defines the reply to give if the query returns
+some tuples.  The database only verifies whether the user is present
+or not, so no additional result is supplied in the reply.
+
+@node aliases-meta1
+@appendixsec Configure aliases
+
+We are going to store aliases in the table @samp{aliases} which has
+the following structure:
+
+@example
+@group
+CREATE TABLE userdb (
+  user varchar(32) NOT NULL default '',
+  alias text
+  PRIMARY KEY (user)
+);
+@end group
+@end example
+
+It will be served by @samp{alias} database, defined as follows:
+
+@example
+@group
+database alias mysql \
+    defaultdb \
+    query="SELECT alias FROM aliases WHERE user='$key'" \
+    positive-reply="OK $alias"
+@end group
+@end example
+
+It differs from the @samp{userdb} database only in that it returns
+a @dfn{result section} with its positive reply.
+
+
+@node smapd-meta1
+@appendixsec Dispatch Rules
+
+  The following rules dispatch queries based on their map names to 
+the two databases:
+
+@example
+dispatch map alias database aliasdb
+dispatch map userdb database userdb
+@end example
+
+@node conf-meta1
+@appendixsec MeTA1 configuration
+
+  Finally we need to inform @acronym{MeTA1} about new maps.  This is
+done in the file @file{/etc/meta1/meta1.conf}, section @samp{smar}.
+
+  First, the @samp{userdb} map:
+
+@example
+  map password @{ type = passwd; @}
+  map userdb @{
+        type = socket;
+        path = "/var/spool/meta1/smap/userdb";
+        mapname = userdb;
+  @}
+  map locusr @{
+        type = sequence;
+        maps = @{ password, userdb @};
+  @}
+
+  local_user_map @{
+       name = "locusr";
+       flags = @{ localpart, local_domains @};
+  @}
+@end example
+
+As a result, @acronym{MeTA1} will look up users in the system database
+first, and, if that fails, in the @acronym{SQL} database.
+
+  Next, the @samp{aliasdb} map:
+
+@example
+  map lum @{
+        type = socket;
+        path = "/var/spool/meta1/smap/userdb";
+        mapname = aliases;
+  @}
+  map stdal @{ file = "aliases.db"; type = hash; @}
+  map aliasmap @{ type = sequence; maps = @{ lum, stdal @}; @}
+  aliases @{
+        name = aliasmap;
+        flags = @{ localpart, local_domains @};
+  @}
+@end example
+  
+  As for @samp{userdb}, this map declaration also uses two different
+databases.  First, it asks @command{smapd} to find the alias.  If it
+returns a negative reply, the map falls back to the default
+@file{aliases.db} database.
+
+  

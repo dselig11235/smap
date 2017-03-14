@@ -1,0 +1,129 @@
+Smap README
+Copyright (C) 2006-2010, 2014 Sergey Poznyakoff
+
+* Introduction
+==============
+
+This file contains brief information about configuring, testing
+and running Smap.  It is *not* intended as a replacement
+for the documentation, and is provided as a brief reference only.
+The complete documentation for Smap is available in
+the doc/ subdirectory. To read it without installing the package
+run `info -f doc/smap.info'. After the package is installed
+the documentation can be accessed running `info Smap'.  Invoking
+`info smapd' will bring you to the description of `smapd' server.
+Similarly, running `info smapc' will show the description of `smapc',
+a client utility.
+
+An online copy of the documentation in various formats is available
+at http://smap.man.gnu.org.ua.
+
+Visit http://www.gnu.org.ua/software/smap, for additional
+information about the project, including pointers to the source repository
+and file downloads.
+
+* Overview
+==========
+
+Socket maps are a mechanism for extending the functionality of
+Sendmail and MeTA1.
+
+Smap provides a comprehensive set of tools for configuring, testing and
+writing socket maps.
+
+Its main component, `smapd', is a modular server which handles socket
+map requests.  Instead of handling each request itself, `smapd' relies on
+loadable modules to provide the requested functionality. In other
+words, the server is responsible for handling socket map protocol, and
+for dispatching queries to appropriate modules.  Modules, in their
+turn, are responsible for looking up the requested key and returning
+the result.  
+
+Second important part of the package is a set of loadable modules for
+`smapd'. These modules cover several important database management
+systems and make it possible to easily configure servers for
+retrieving data from them. 
+
+Furthermore, the package provides a framework for writing new modules,
+either in C or in Guile.
+
+And finally, Smap includes a client program, `smapc', which can be used
+to query arbitrary socket servers from the command line. Beside other
+possible uses, smapc is a valuable tool for testing your socket
+servers.  
+
+* Building
+
+Usual building rules apply:
+
+./configure
+make
+
+Read the file INSTALL for a description of configure utility and its
+generic options.  Smap-specific options are:
+
+** --with-tcp-wrappers
+
+Compile with TCP wrappers (libwrap) support.  This is the default.
+
+** --with-mailutils
+
+Compile with GNU Mailutils, build the `mailutils' module.  By default,
+this is enabled if configure determines that a sufficiently new
+version of GNU Mailutils (i.e. 2.0 or newer) is installed.
+
+See http://www.gnu.org/software/mailutils for more information on GNU
+Mailutils including file downloads.
+
+** --with-guile
+
+Compile with Guile support; build the `guile' module.  By default,
+this is enabled if configure determines that a sufficiently new
+version of Guile (i.e. 1.8 or newer) is installed.
+
+See http://www.gnu.org/software/guile for additional information on
+Guile including file downloads.
+
+** --with-guile-site-dir[=DIR]
+Specify a directory to install guile modules to.  Without argument --
+use Guile-specific default directory.
+
+** --with-readline
+
+Compile with GNU readline.  This is the default,
+
+* Installing
+
+After build finishes, run
+
+  make install
+
+If it was the first installation of Smap, it will install a
+minimal configuration file (smapd.conf) to your `sysconfdir'
+directory.  Tailor it to your needs.  Read the docs for a detailed
+description of its format.
+
+If you are upgrading an old installation, your previous smapd.conf
+will remain intact.
+
+
+* Copyright information
+
+Copyright (C) 2006, 2007, 2008, 2009, 2010 Sergey Poznyakoff
+
+   Permission is granted to anyone to make or distribute verbatim copies
+   of this document as received, in any medium, provided that the
+   copyright notice and this permission notice are preserved,
+   thus giving the recipient permission to redistribute in turn.
+
+   Permission is granted to distribute modified versions
+   of this document, or of portions of it,
+   under the above conditions, provided also that they
+   carry prominent notices stating who last changed them.
+
+
+Local Variables:
+mode: outline
+paragraph-separate: "[ 	]*$"
+version-control: never
+End:

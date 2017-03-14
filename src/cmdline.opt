@@ -1,0 +1,117 @@
+/* This file is part of Smap.
+   Copyright (C) 2006-2007, 2010, 2014 Sergey Poznyakoff
+
+   Smap is free software; you can redistribute it and/or modify
+   it under the terms of the GNU General Public License as published by
+   the Free Software Foundation; either version 3, or (at your option)
+   any later version.
+
+   Smap is distributed in the hope that it will be useful,
+   but WITHOUT ANY WARRANTY; without even the implied warranty of
+   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+   GNU General Public License for more details.
+
+   You should have received a copy of the GNU General Public License
+   along with Smap.  If not, see <http://www.gnu.org/licenses/>. */
+
+OPTIONS_BEGIN("smapd",
+              [<A socket map daemon.>],[<>],
+	      [<gnu>],
+	      [<copyright_year=2009, 2010, 2014>],
+	      [<copyright_holder=Sergey Poznyakoff>])
+
+GROUP([<Operation mode>])
+OPTION(lint, t,,
+       [<test configuration and exit>])
+BEGIN
+       lint_mode = 1;
+       log_to_stderr = 1;       
+END
+
+OPTION(inetd, i,,
+       [<inetd mode>])
+BEGIN
+       optcache_int(&inetd_mode, 1);
+END
+
+GROUP([<Operation modifiers>])
+OPTION(config, c, FILE,
+       [<read this configuration file>])
+BEGIN
+	config_file = optarg;
+END
+
+OPTION(foreground, f,,
+       [<operate in foreground>])
+BEGIN
+        optcache_int(&foreground, 1);
+END
+
+OPTION(single-process, s,,
+       [<single-process mode>])
+BEGIN
+       optcache_int(&srvman_param.single_process, 1);
+END
+
+GROUP([<Logging>])
+
+OPTION(stderr, e,,
+       [<output diagnostic to stderr>])
+BEGIN
+       optcache_int(&log_to_stderr, 1);
+END
+
+OPTION(syslog, l,,
+       [<output diagnostic to syslog (default)>])
+BEGIN
+       optcache_int(&log_to_stderr, 0);
+END
+
+OPTION(log-tag, L, TAG,
+       [<set syslog tag>])
+BEGIN       
+       optcache_str(&log_tag, optarg);
+END
+
+OPTION(log-facility, F, FACILITY,
+       [<set syslog facility>])
+BEGIN
+       int n;
+       if (syslog_fname_to_n(optarg, &n)) {
+            smap_error("unrecognized facility: %s", optarg);
+	    exit(EX_USAGE);
+       }
+       optcache_int(&log_facility, n);
+END
+
+GROUP([<Tracing and debugging>])
+OPTION(trace, T,,
+       [<trace queries>])
+BEGIN
+       optcache_int(&smap_trace_option, 1);
+END
+
+OPTION(trace-pattern, p, PATTERN,
+       [<trace only queries matching this pattern>])
+BEGIN
+       add_trace_pattern(optarg);
+END       
+
+OPTION(debug, d, LEVEL-SPEC,
+       [<set debug verbosity level>])
+ALIAS(,x)       
+BEGIN
+       if (smap_debug_set(optarg))
+           smap_error("invalid debug specification: %s", optarg);
+END
+
+
+OPTIONS_END
+
+void
+get_options (int argc, char *argv[])
+{
+    GETOPT(argc, argv,, exit(EX_USAGE))
+}
+    
+
